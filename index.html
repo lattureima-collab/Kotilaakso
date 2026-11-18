@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#23491d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Vegan Space Rescue – Kotilaakso v8.1</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- YLÄPALKIN RESURSSIT & ASETUKSET -->
+  <div id="hud">
+    <div class="hud-scroll-row">
+      <div class="hud-group">
+        <div class="pill" id="heroPill" title="Sankarin suojapuku (jos 0 %, evakuoidaan Tähtialuksen hoitokapseliin)">
+          <img id="heroHudIcon" src="assets/hero_male.png" class="ico" alt="">
+          <span id="suitTxt">100%</span>
+          <div class="bar-mini"><div id="suitBar" class="bar-fill" style="width:100%;background:var(--green)"></div></div>
+        </div>
+        <div class="pill" title="Vapaat kantajat / Kaikki työläiset">
+          <img src="assets/char_builder_f.png" class="ico" alt=""> <span id="popTxt">3/4</span>
+        </div>
+        <div class="pill" id="stewPill" title="Kyläkeittiön Naurispata & Nauriskori">
+          <img src="assets/icon_turnip.png" class="ico" alt=""> <span id="stewTxt">32</span> (<span id="turnipTxt">0</span>)
+        </div>
+        <div class="pill" title="Tukit metsäpinossa & Laudat lautatarhassa">
+          <img src="assets/item_log.png" class="ico" alt=""> <span id="logTxt">0</span> •
+          <img src="assets/item_board.png" class="ico" alt=""> <span id="boardTxt">0</span>
+        </div>
+        <div class="pill" title="Kaura -> Jauhosäkit -> Leivät (kantajat tuovat leipäkorit sillan yli, 5 leipää = +1 kolikko)">
+          <img src="assets/item_oat.png" class="ico" alt=""> <span id="oatTxt">0</span> •
+          <img src="assets/item_flour.png" class="ico" alt=""> <span id="flourTxt">0</span> •
+          <img src="assets/bread_coin.png" class="ico" alt=""> <span id="breadTxt">0/5</span>
+        </div>
+        <div class="pill" title="Space Coins, Juhta-Härät & Kaurakaartilaiset (+ Kersantti)">
+          🪙 <span id="coinTxt">0</span> •
+          <img src="assets/ox_idle.png" class="ico" alt=""> <span id="oxTxt">0</span> •
+          <img src="assets/char_sergeant.png" class="ico" alt=""> <span id="solTxt">0</span>
+        </div>
+      </div>
+
+      <div class="hud-group">
+        <button class="pill" id="zoomBtn" title="Vaihda zoomausta (voit myös nipistää kahdella sormella tai rullata hiirellä)">🔍 75%</button>
+        <button class="pill" id="musicBtn" title="Taustamusiikki päälle/pois">🎵</button>
+        <button class="pill" id="soundBtn" title="Äänet päälle/pois">🔊</button>
+        <button class="pill" id="helpBtn" title="Vaihda pelihahmoa tai nollaa peli">🧑‍🚀</button>
+      </div>
+    </div>
+
+    <div class="status-strip">
+      <span class="goal-text" id="nextGoalTxt">⭐ Tavoite: Laita vapaat työläiset (tai Sankari!) kaatamaan puita metsästä!</span>
+      <span id="weatherTxt">☀️ Kirkas</span>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- ALAPALKIN PÄÄTOIMINNOT -->
+  <div id="actionBar">
+    <button id="heroFocusBtn" class="act-btn blue" title="Keskitä kamera sankariin ja aktivoi ohjaus">
+      👨‍🚀 <span id="heroBtnTxt">Aktivoi Sankari</span>
+    </button>
+    <button id="manageBtn" class="act-btn">
+      ⚒️ Työnjako & Rakentaminen <span id="unlockBadge" class="badge-dot hidden">!</span>
+    </button>
+    <button id="spaceLaunchBtn" class="act-btn purple hidden">
+      🚀 Tähtialukseen!
+    </button>
+  </div>
+
+  <!-- TYÖNJAKO- JA RAKENNUSVALIKKO -->
+  <div id="manageModal" class="modal-wrap hidden">
+    <div class="modal">
+      <h2>
+        <span>🏡 Kotilaakson Hallinta</span>
+        <span style="font-size:0.82rem;color:#86efac">Vapaita kantajia: <strong id="freeCarriersHdr">3</strong></span>
+      </h2>
+      <p>Voit määrätä töitä tästä valikosta <strong>TAI suoraan kartalta</strong>: napauta ketä tahansa työläistä, sotilasta, Kersanttia tai Sankaria ja napauta sen jälkeen kohdetta (puuta, työmaata, peltoa tai vartiopaikkaa)!</p>
+
+      <div id="medbayBanner" class="build-card active-site hidden"></div>
+
+      <div class="sec-hdr">1. Kylän Tuotantotehtävät</div>
+      <div id="jobsContainer"></div>
+
+      <div class="sec-hdr">2. Rakennustyömaat, Pellot, Härät & Kasarmi</div>
+      <div id="buildContainer"></div>
+
+      <button class="act-btn green" style="width:100%;margin-top:8px;justify-content:center;" id="closeManageBtn">Sulje & Palaa Laaksoon</button>
+    </div>
+  </div>
+
+  <!-- HAHMONVALINTA- JA ALOITUSIKKUNA -->
+  <div id="introModal" class="modal-wrap">
+    <div class="modal">
+      <h2><span>🌱 Vegan Space Rescue</span> <span class="pill" style="color:#86efac">v8.1 Erämaalaakso</span></h2>
+
+      <div class="avatar-stage">
+        <button class="nav-arrow" id="prevAvatarBtn">◀</button>
+        <div class="avatar-img-box"><img id="avatarShowcaseImg" src="assets/hero_male.png" alt="Sankari"></div>
+        <button class="nav-arrow" id="nextAvatarBtn">▶</button>
+      </div>
+
+      <div class="avatar-info-box">
+        <h3 id="avatarName">Kapteeni Kasper</h3>
+        <p id="avatarBio">Monitoimi-pioneeri ja tähtialuksen lentäjä: auttaa puunkaadossa ja rakentamisessa, nopeuttaa lähellä olevia kyläläisiä ja avaa metsän tarvikelaatikot!</p>
+        <div class="avatar-quote" id="avatarQuote">"Napauta ketä tahansa kyläläistä, sotilasta tai minua suoraan kartalla ja osoita kohde!"</div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="act-btn green" style="flex:1;justify-content:center;" id="startBtn">Valitse Sankari & Aloita!</button>
+        <button class="buy-btn" id="resetSaveBtn">Nollaa tallennus</button>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script defer src="js/config.js"></script>
+  <script defer src="js/state.js"></script>
+  <script defer src="js/audio.js"></script>
+  <script defer src="js/camera.js"></script>
+  <script defer src="js/ai.js"></script>
+  <script defer src="js/render.js"></script>
+  <script defer src="js/ui.js"></script>
+  <script defer src="js/main.js"></script>
+</body>
+</html>
