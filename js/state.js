@@ -1,11 +1,11 @@
 // ============================================================================
-// js/state.js – Pelitila, koko laakson metsä, tonttien raivaus ja yksiköt (v8.1)
+// js/state.js – Pelitila, Iso Kylätalo, ruokaraja, tonttiääriviivat & yksiköt (v8.2)
 // ============================================================================
 window.KV = window.KV || {};
 
 (() => {
-  const { SITES, getRiverCenter, getRiverHalfWidth, BRIDGE_X, BRIDGE_Y } = KV.CFG;
-  const SAVE_KEY = 'vegan_space_v8_1';
+  const { SITES, BUILDING_KEYS, COMMANDERS, FOOD_CFG, getRiverCenter, getRiverHalfWidth, BRIDGE_X, BRIDGE_Y } = KV.CFG;
+  const SAVE_KEY = 'vegan_space_v8_2';
 
   function getRecommendedZoom() {
     const w = window.innerWidth || 1024;
@@ -18,27 +18,28 @@ window.KV = window.KV || {};
   }
 
   const defaultState = {
-    avatarIdx: 0,
     started: false,
     soundOn: true,
     musicOn: true,
     zoom: null,
-    coins: 0,
-    breads: 0,
-    stew: 32,
+    commanderChosen: false,
+    commanderId: 'pippuri',
     heroMedbayTimer: 0,
+    coins: 0,
+    totalCoinsEarned: 0,
+    breads: 0,
+    stew: 34,
     unlocks: {
-      house: false,
-      bigTurnip: false,
+      lodge: true,
       sawmill: false,
-      oxPen: false,
-      oatChain: false,
-      barracks: false
+      bigTurnip: false,
+      barracks: false,
+      bridgeChain: false
     },
     everBakedBread: false,
     jobs: {
       cookGardeners: 1,
-      woodcutters: 0,
+      woodcutters: 1,
       turnipFarmers: 0,
       sawyers: 0,
       oatFarmers: 0,
@@ -47,16 +48,18 @@ window.KV = window.KV || {};
     },
     piles: { logsAtForest: 0, turnipsAtField: 0, oatsAtField: 0 },
     buildings: {
-      house1:   { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 5, boardsIn: 0, boardsNeed: 0, spawnProg: 0, residents: 0, maxRes: 2, hp: 200, maxHp: 200 },
-      house2:   { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 7, boardsIn: 0, boardsNeed: 4, spawnProg: 0, residents: 0, maxRes: 2, hp: 220, maxHp: 220 },
-      house3:   { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 8, boardsIn: 0, boardsNeed: 6, spawnProg: 0, residents: 0, maxRes: 3, hp: 240, maxHp: 240 },
+      lodge:    { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 5, boardsIn: 0, boardsNeed: 0, growing: false, spawnProg: 0, residents: 0, hp: 320, maxHp: 320 },
       kitchen:  { state: 'built', builders: 0, prog: 1, logsIn: 4, logsNeed: 4, boardsIn: 0, boardsNeed: 0, hp: 240, maxHp: 240 },
-      sawmill:  { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 7, boardsIn: 0, boardsNeed: 0, rawLogs: 0, outBoards: 0, workProg: 0, hp: 220, maxHp: 220 },
-      oxPen:    { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 4, boardsIn: 0, boardsNeed: 4, hp: 200, maxHp: 200 },
+      sawmill:  { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 6, boardsIn: 0, boardsNeed: 0, rawLogs: 0, outBoards: 0, workProg: 0, hp: 220, maxHp: 220 },
+      barracks: { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 6, boardsIn: 0, boardsNeed: 6, trainQueued: false, trainProg: 0, hp: 320, maxHp: 320 },
       bridge:   { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 6, boardsIn: 0, boardsNeed: 6, hp: 280, maxHp: 280 },
-      mill:     { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 5, boardsIn: 0, boardsNeed: 8, rawOats: 0, outFlour: 0, workProg: 0, hp: 220, maxHp: 220 },
-      bakery:   { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 6, boardsIn: 0, boardsNeed: 9, rawFlour: 0, outBreads: 0, workProg: 0, hp: 220, maxHp: 220 },
-      barracks: { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 7, boardsIn: 0, boardsNeed: 10, trainQueued: false, trainType: 'soldier', trainProg: 0, hp: 300, maxHp: 300 }
+      mill:     { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 5, boardsIn: 0, boardsNeed: 7, rawOats: 0, outFlour: 0, workProg: 0, hp: 220, maxHp: 220 },
+      bakery:   { state: 'none',  builders: 0, prog: 0, logsIn: 0, logsNeed: 6, boardsIn: 0, boardsNeed: 8, rawFlour: 0, outBreads: 0, workProg: 0, hp: 220, maxHp: 220 },
+      // Piilotetut tyngät audio.js-yhteensopivuutta varten
+      oxPen:    { state: 'none', builders: 0 },
+      house1:   { state: 'none', builders: 0 },
+      house2:   { state: 'none', builders: 0 },
+      house3:   { state: 'none', builders: 0 }
     },
     fields: {
       starterTurnip: { active: true,  stage: 4, prog: 0 },
@@ -65,17 +68,14 @@ window.KV = window.KV || {};
     },
     cratesOpened: {},
     workerCount: 4,
-    oxCount: 0,
     soldierCount: 0,
-    hasSergeant: false,
-    sergeantPost: null,
     soldierPosts: []
   };
 
   let loaded = null;
   try { loaded = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { loaded = null; }
 
-  const S = (loaded && loaded.buildings && loaded.fields && loaded.buildings.bakery.outBreads !== undefined)
+  const S = (loaded && loaded.buildings && loaded.buildings.lodge && loaded.fields)
     ? loaded
     : JSON.parse(JSON.stringify(defaultState));
 
@@ -83,6 +83,11 @@ window.KV = window.KV || {};
   if (!S.cratesOpened) S.cratesOpened = {};
   if (!Array.isArray(S.soldierPosts)) S.soldierPosts = [];
   if (typeof S.heroMedbayTimer !== 'number') S.heroMedbayTimer = 0;
+  if (typeof S.totalCoinsEarned !== 'number') S.totalCoinsEarned = S.coins || 0;
+  // Varmistetaan audio.js-yhteensopivuus myös ladatussa tallennuksessa
+  ['oxPen', 'house1', 'house2', 'house3'].forEach(k => {
+    if (!S.buildings[k]) S.buildings[k] = { state: 'none', builders: 0 };
+  });
 
   function saveGame() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {}
@@ -93,10 +98,15 @@ window.KV = window.KV || {};
     location.reload();
   }
 
+  function getCommanderSpec() {
+    return COMMANDERS[S.commanderId] || COMMANDERS.pippuri;
+  }
+
+  const initCmd = getCommanderSpec();
   const hero = {
     kind: 'hero',
-    x: SITES.ship.x,
-    y: SITES.ship.y + 66,
+    x: SITES.barracks.x,
+    y: SITES.barracks.y + 62,
     ang: Math.PI * 0.5,
     faceLeft: false,
     faceBack: false,
@@ -107,9 +117,12 @@ window.KV = window.KV || {};
     selected: false,
     target: null,
     targetTree: null,
-    hp: 100,
-    maxHp: 100,
-    fireCd: 0
+    hp: initCmd.maxHp,
+    maxHp: initCmd.maxHp,
+    fireCd: 0,
+    bypassId: null,
+    bypassDir: 1,
+    bypassLock: 0
   };
 
   const world = {
@@ -120,7 +133,7 @@ window.KV = window.KV || {};
     meadowFlora: [],
     riverBankProps: [],
     workers: [],
-    oxen: [],
+    oxen: [], // pidetään tyhjänä taulukkona audio.js:ää varten
     soldiers: [],
     sergeant: null,
     orcs: [],
@@ -131,10 +144,49 @@ window.KV = window.KV || {};
     clickRipples: [],
     frostTimer: 135,
     frostActive: 0,
-    orcRaidTimer: 150
+    orcRaidTimer: 115
   };
 
+  // Väestön ja Naurispadan kantokyvyn laskenta
+  function getTotalPopulation() {
+    const trainReserve = S.buildings.barracks.trainQueued ? 1 : 0;
+    const growReserve = S.buildings.lodge.growing ? 1 : 0;
+    return S.workerCount + S.soldierCount + (S.commanderChosen ? 1 : 0) + trainReserve + growReserve;
+  }
+
+  function getLivingPopulation() {
+    return S.workerCount + S.soldierCount + (S.commanderChosen ? 1 : 0);
+  }
+
+  function getMaxSustainablePop() {
+    let cap = 0;
+    if ((S.jobs.cookGardeners || 0) >= 1) cap += 6;
+    if ((S.jobs.cookGardeners || 0) >= 2) cap += 2;
+    if (S.fields.turnip.active && (S.jobs.turnipFarmers || 0) >= 1) cap += 4;
+    if (S.fields.turnip.active && (S.jobs.turnipFarmers || 0) >= 2) cap += 3;
+    return Math.max(4, Math.min(16, cap));
+  }
+
+  function getStewBurnPerSec() {
+    return getLivingPopulation() * FOOD_CFG.STEW_PER_PERSON_SEC;
+  }
+
+  // Kertoo näkyykö rakennus tai pelto punaisena ääriviivana kartalla juuri nyt
+  function isOutlineVisible(key) {
+    if (key === 'turnipFarm') return Boolean(S.unlocks.bigTurnip && !S.fields.turnip.active);
+    if (key === 'oatFarm') return Boolean(S.buildings.bridge.state === 'built' && !S.fields.oat.active);
+    const b = S.buildings[key];
+    if (!b || b.state !== 'none') return false;
+    if (key === 'lodge') return Boolean(S.unlocks.lodge);
+    if (key === 'sawmill') return Boolean(S.unlocks.sawmill);
+    if (key === 'barracks') return Boolean(S.unlocks.barracks);
+    if (key === 'bridge') return Boolean(S.unlocks.bridgeChain);
+    if (key === 'mill' || key === 'bakery') return Boolean(S.buildings.bridge.state === 'built');
+    return false;
+  }
+
   function selectUnit(unit) {
+    if (unit === hero && !S.commanderChosen) return;
     world.selectedEntity = unit;
     hero.selected = (unit === hero);
     if (KV.UI) KV.UI.syncHeroButton();
@@ -162,7 +214,6 @@ window.KV = window.KV || {};
     return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
   }
 
-  // Tarkistaa etäisyyden myös kaarevaan polkuun, jotta mutkiin ei jää yhtäkään puuta
   function distToTrailCurve(px, py, x1, y1, cx, cy, x2, y2) {
     let minD = distToSegment(px, py, x1, y1, x2, y2);
     let prevX = x1, prevY = y1;
@@ -179,55 +230,60 @@ window.KV = window.KV || {};
   }
 
   function isInsideInitialClearing(x, y) {
-    const sx = SITES.ship.x, sy = SITES.ship.y + 22;
+    const lx = SITES.lodge.x, ly = SITES.lodge.y + 28;
+    // Tähtialuksen luoteisaukio + polku kylään
     if (Math.hypot(x - SITES.ship.x, y - SITES.ship.y) < 118) return true;
+    if (distToTrailCurve(x, y, SITES.ship.x + 25, SITES.ship.y + 30, -470, -240, lx, ly) < 46) return true;
+
+    // Keskustan Iso Kylätalo, Kyläkeittiö, Kotitarha ja Tukkipino
+    if (Math.hypot(x - SITES.lodge.x, y - SITES.lodge.y) < 122) return true;
     if (Math.hypot(x - SITES.kitchen.x, y - SITES.kitchen.y) < 104) return true;
     if (Math.hypot((x - SITES.starterGarden.x) / 1.25, y - SITES.starterGarden.y) < 84) return true;
-    if (Math.hypot(x - SITES.logPile.x, y - SITES.logPile.y) < 76) return true;
-    if (distToTrailCurve(x, y, sx, sy, -255, -160, SITES.logPile.x, SITES.logPile.y + 16) < 48) return true;
-    if (distToTrailCurve(x, y, sx, sy, -245, 115, SITES.kitchen.x, SITES.kitchen.y + 30) < 48) return true;
-    if (distToTrailCurve(x, y, SITES.kitchen.x - 18, SITES.kitchen.y + 30, -385, 215, SITES.starterGarden.x + 38, SITES.starterGarden.y) < 48) return true;
+    if (Math.hypot(x - SITES.logPile.x, y - SITES.logPile.y) < 78) return true;
+
+    if (distToTrailCurve(x, y, lx, ly, -255, -160, SITES.logPile.x, SITES.logPile.y + 16) < 48) return true;
+    if (distToTrailCurve(x, y, lx, ly, -250, 120, SITES.kitchen.x, SITES.kitchen.y + 30) < 48) return true;
+    if (distToTrailCurve(x, y, SITES.kitchen.x - 18, SITES.kitchen.y + 30, -390, 225, SITES.starterGarden.x + 38, SITES.starterGarden.y) < 48) return true;
     return false;
   }
 
   function isInsideReservedZone(x, y) {
     if (isInsideInitialClearing(x, y)) return true;
 
-    for (const [key, b] of Object.entries(S.buildings)) {
-      if (b.state !== 'none') {
+    const lx = SITES.lodge.x, ly = SITES.lodge.y + 28;
+    const westBridgeMouth = BRIDGE_X - 134;
+    const eastBridgeMouth = BRIDGE_X + 134;
+
+    // Raivataan tontit heti kun rakennus TAI sen punainen ääriviiva on näkyvissä, jotta ääriviiva erottuu selvästi!
+    for (const key of BUILDING_KEYS) {
+      const b = S.buildings[key];
+      if (b.state !== 'none' || isOutlineVisible(key)) {
         const pos = SITES[key];
-        const rad = key === 'bridge' ? 96 : 102;
+        const rad = key === 'bridge' ? 96 : (key === 'lodge' ? 120 : 104);
         if (Math.hypot(x - pos.x, y - pos.y) < rad) return true;
       }
     }
 
-    if (S.fields.turnip.active) {
-      if (Math.hypot((x - SITES.turnipFarm.x) / 1.35, y - SITES.turnipFarm.y) < 102) return true;
+    if (S.fields.turnip.active || isOutlineVisible('turnipFarm')) {
+      if (Math.hypot((x - SITES.turnipFarm.x) / 1.35, y - SITES.turnipFarm.y) < 104) return true;
       if (Math.hypot(x - SITES.turnipBox.x, y - SITES.turnipBox.y) < 60) return true;
-      if (distToTrailCurve(x, y, SITES.kitchen.x, SITES.kitchen.y + 32, -335, 265, SITES.turnipBox.x, SITES.turnipBox.y + 6) < 48) return true;
+      if (distToTrailCurve(x, y, SITES.kitchen.x, SITES.kitchen.y + 32, -335, 275, SITES.turnipBox.x, SITES.turnipBox.y + 6) < 48) return true;
     }
 
-    const westBridgeMouth = BRIDGE_X - 134;
-    const eastBridgeMouth = BRIDGE_X + 134;
-
-    if (S.fields.oat.active) {
-      if (Math.hypot((x - SITES.oatFarm.x) / 1.35, y - SITES.oatFarm.y) < 102) return true;
+    if (S.fields.oat.active || isOutlineVisible('oatFarm')) {
+      if (Math.hypot((x - SITES.oatFarm.x) / 1.35, y - SITES.oatFarm.y) < 104) return true;
       if (Math.hypot(x - SITES.oatPile.x, y - SITES.oatPile.y) < 60) return true;
-      if (distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 6, 365, 115, SITES.oatPile.x, SITES.oatPile.y + 6) < 48) return true;
+      if (distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 2, 365, 115, SITES.oatPile.x, SITES.oatPile.y + 6) < 48) return true;
       if (distToTrailCurve(x, y, SITES.oatPile.x, SITES.oatPile.y + 6, 460, 235, SITES.oatFarm.x - 28, SITES.oatFarm.y - 12) < 48) return true;
     }
 
-    const sx = SITES.ship.x, sy = SITES.ship.y + 22;
-    if (S.buildings.house1.state !== 'none' && distToTrailCurve(x, y, sx, sy, -335, -55, SITES.house1.x, SITES.house1.y + 32) < 48) return true;
-    if (S.buildings.house2.state !== 'none' && distToTrailCurve(x, y, SITES.house1.x, SITES.house1.y + 32, -555, -80, SITES.house2.x, SITES.house2.y + 32) < 48) return true;
-    if (S.buildings.house3.state !== 'none' && distToTrailCurve(x, y, SITES.house1.x, SITES.house1.y + 32, -515, 10, SITES.house3.x, SITES.house3.y + 32) < 48) return true;
-    if (S.buildings.sawmill.state !== 'none' && distToTrailCurve(x, y, SITES.logPile.x, SITES.logPile.y + 16, -175, -355, SITES.sawmill.x, SITES.sawmill.y + 32) < 48) return true;
-    if (S.buildings.oxPen.state !== 'none' && distToTrailCurve(x, y, sx, sy, -120, -55, SITES.oxPen.x, SITES.oxPen.y + 30) < 48) return true;
-    if (S.buildings.barracks.state !== 'none' && distToTrailCurve(x, y, sx, sy, -230, -75, SITES.barracks.x, SITES.barracks.y + 36) < 48) return true;
-    if (S.buildings.bridge.state !== 'none' && distToTrailCurve(x, y, sx, sy, -40, 38, westBridgeMouth, BRIDGE_Y + 6) < 48) return true;
+    if (S.buildings.sawmill.state !== 'none' && distToTrailCurve(x, y, SITES.logPile.x, SITES.logPile.y + 16, -175, -345, SITES.sawmill.x, SITES.sawmill.y + 32) < 48) return true;
+    if (S.buildings.barracks.state !== 'none' && distToTrailCurve(x, y, lx, ly, -120, -55, SITES.barracks.x, SITES.barracks.y + 36) < 48) return true;
+    if (S.buildings.bridge.state !== 'none' && distToTrailCurve(x, y, lx, ly, -40, 38, westBridgeMouth, BRIDGE_Y + 2) < 48) return true;
+
     if (S.buildings.bridge.state === 'built') {
-      if (S.buildings.mill.state !== 'none' && distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 6, eastBridgeMouth + 32, -45, SITES.mill.x + 12, SITES.mill.y + 52) < 48) return true;
-      if (S.buildings.bakery.state !== 'none' && distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 6, 435, 58, SITES.bakery.x, SITES.bakery.y + 32) < 48) return true;
+      if (S.buildings.mill.state !== 'none' && distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 2, eastBridgeMouth + 32, -45, SITES.mill.x + 12, SITES.mill.y + 52) < 48) return true;
+      if (S.buildings.bakery.state !== 'none' && distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 2, 435, 58, SITES.bakery.x, SITES.bakery.y + 32) < 48) return true;
       if (S.buildings.mill.state !== 'none' && S.buildings.bakery.state !== 'none' && distToTrailCurve(x, y, SITES.mill.x + 12, SITES.mill.y + 52, 455, -45, SITES.bakery.x, SITES.bakery.y + 32) < 48) return true;
     }
 
@@ -257,9 +313,9 @@ window.KV = window.KV || {};
     world.forestProps = [];
 
     const crateSpecs = [
-      { id: 'nw', x: -735, y: -440, reward: 'boards', qty: 4,  msg: '📦 Tarvikelaatikko avattu: +4 valmista lautaa (🪵)!' },
-      { id: 'sw', x: -740, y: 310,  reward: 'stew',   qty: 15, msg: '📦 Muonalaatikko avattu: +15 annosta Naurispataa (🍲)!' },
-      { id: 'n',  x: -145, y: -595, reward: 'coins',  qty: 1,  msg: '📦 Tähtilaatikko avattu: +1 Space Coin (🪙)!' },
+      { id: 'w',  x: -765, y: -115, reward: 'boards', qty: 4,  msg: '📦 Tarvikelaatikko avattu: +4 valmista lautaa (🪵)!' },
+      { id: 'sw', x: -740, y: 310,  reward: 'stew',   qty: 16, msg: '📦 Muonalaatikko avattu: +16 annosta Naurispataa (🍲)!' },
+      { id: 'n',  x: -155, y: -590, reward: 'coins',  qty: 1,  msg: '📦 Tähtilaatikko avattu: +1 Space Coin (🪙)!' },
       { id: 'ne', x: 580,  y: -360, reward: 'coins',  qty: 2,  msg: '📦 Itämetsän aarrelaatikko: +2 Space Coinia (🪙)!' },
       { id: 'se', x: 745,  y: 260,  reward: 'boards', qty: 6,  msg: '📦 Itämetsän tarvikelaatikko: +6 valmista lautaa (🪵)!' }
     ];
@@ -279,7 +335,7 @@ window.KV = window.KV || {};
         if (Math.abs(tx - rc) < rw + 38) continue;
         if (((seed >> 16) & 0xff) < 34) continue;
         if (isInsideReservedZone(tx, ty)) continue;
-        if (world.supplyCrates.some(cr => Math.hypot(tx - cr.x, ty - cr.y) < 42)) continue;
+        if (world.supplyCrates.some(cr => Math.hypot(tx - cr.x, ty - cr.y) < 44)) continue;
 
         const isOuterBorder = (Math.abs(tx) > 940 || Math.abs(ty) > 800);
         world.trees.push({
@@ -347,11 +403,17 @@ window.KV = window.KV || {};
     }
   }
 
+  // Jokaisessa rakennuskohteessa saa olla AINA KORKEINTAAN 1 rakentaja!
   function getActiveBuilderSum() {
     let sum = 0;
-    for (const b of Object.values(S.buildings)) {
-      if (b.state === 'building' || b.state === 'ruined') sum += (b.builders || 0);
-      else b.builders = 0;
+    for (const key of BUILDING_KEYS) {
+      const b = S.buildings[key];
+      if (b.state === 'building' || b.state === 'ruined') {
+        b.builders = Math.max(0, Math.min(1, b.builders || 0));
+        sum += b.builders;
+      } else {
+        b.builders = 0;
+      }
     }
     return sum;
   }
@@ -381,7 +443,8 @@ window.KV = window.KV || {};
     let safety = 0;
     while (getAssignedTotal() > S.workerCount && safety++ < 100) {
       let reduced = false;
-      for (const b of Object.values(S.buildings)) {
+      for (const key of BUILDING_KEYS) {
+        const b = S.buildings[key];
         if (b.builders > 0) { b.builders--; reduced = true; break; }
       }
       if (!reduced) {
@@ -401,11 +464,10 @@ window.KV = window.KV || {};
     for (let i = 0; i < (S.jobs.millers || 0); i++) roleList.push({ role: 'miller', siteKey: null, slot: i });
     for (let i = 0; i < (S.jobs.bakers || 0); i++) roleList.push({ role: 'baker', siteKey: null, slot: i });
 
-    for (const [key, b] of Object.entries(S.buildings)) {
-      if (b.state === 'building' || b.state === 'ruined') {
-        for (let i = 0; i < (b.builders || 0); i++) {
-          roleList.push({ role: 'builder', siteKey: key, slot: i });
-        }
+    for (const key of BUILDING_KEYS) {
+      const b = S.buildings[key];
+      if ((b.state === 'building' || b.state === 'ruined') && b.builders > 0) {
+        roleList.push({ role: 'builder', siteKey: key, slot: 0 });
       }
     }
 
@@ -437,6 +499,14 @@ window.KV = window.KV || {};
       return false;
     }
 
+    // Jos kohteessa on jo 1 rakentaja, ei lisätä toista!
+    if (newRole === 'builder' && newSiteKey && S.buildings[newSiteKey]) {
+      if ((S.buildings[newSiteKey].builders || 0) >= 1 && !(worker.role === 'builder' && worker.siteKey === newSiteKey)) {
+        showToast('🔨 Tällä työmaalla on jo 1 rakentaja (max 1 rakentaja / kohde)!');
+        return false;
+      }
+    }
+
     const roleToJobKey = {
       cookGardener: 'cookGardeners',
       woodcutter:   'woodcutters',
@@ -448,14 +518,14 @@ window.KV = window.KV || {};
     };
 
     if (worker.role === 'builder' && worker.siteKey && S.buildings[worker.siteKey]) {
-      S.buildings[worker.siteKey].builders = Math.max(0, (S.buildings[worker.siteKey].builders || 1) - 1);
+      S.buildings[worker.siteKey].builders = 0;
     } else if (roleToJobKey[worker.role]) {
       const jk = roleToJobKey[worker.role];
       S.jobs[jk] = Math.max(0, (S.jobs[jk] || 1) - 1);
     }
 
     if (newRole === 'builder' && newSiteKey && S.buildings[newSiteKey]) {
-      S.buildings[newSiteKey].builders = (S.buildings[newSiteKey].builders || 0) + 1;
+      S.buildings[newSiteKey].builders = 1;
     } else if (roleToJobKey[newRole]) {
       const jk = roleToJobKey[newRole];
       S.jobs[jk] = (S.jobs[jk] || 0) + 1;
@@ -474,34 +544,112 @@ window.KV = window.KV || {};
     return true;
   }
 
+  // Käynnistää rakennuksen tai pellon suoraan kartan punaisesta ääriviivasta (aina max 1 rakentaja)
+  function startOutlineFromMap(key, preferredWorker = null) {
+    if (key === 'turnipFarm' || key === 'oatFarm') {
+      const isOat = (key === 'oatFarm');
+      const f = isOat ? S.fields.oat : S.fields.turnip;
+      if (f.active) return false;
+      f.active = true;
+      f.stage = 1;
+      f.prog = 0;
+      clearReservedZones(true);
+      if (KV.Audio) KV.Audio.playSfx('dig', 0.38);
+
+      const farmerRole = isOat ? 'oatFarmer' : 'turnipFarmer';
+      const jobKey = isOat ? 'oatFarmers' : 'turnipFarmers';
+      if (preferredWorker) {
+        assignSpecificWorker(preferredWorker, farmerRole);
+      } else if (getFreeCarriersCount() > 0) {
+        S.jobs[jobKey] = 1;
+        reassignWorkerRoles();
+      } else if ((S.jobs.woodcutters || 0) > 1) {
+        S.jobs.woodcutters--;
+        S.jobs[jobKey] = 1;
+        reassignWorkerRoles();
+      }
+      showToast(`🌱 ${isOat ? 'Suuri Kaurapelto' : 'Suuri Naurispelto'} avattu viljelyyn!`);
+      saveGame();
+      if (KV.UI) KV.UI.updateHUD();
+      return true;
+    }
+
+    const b = S.buildings[key];
+    if (!b || b.state !== 'none') return false;
+
+    b.state = 'building';
+    b.builders = 0;
+    clearReservedZones(true);
+    if (KV.Audio) KV.Audio.playSfx('chop', 0.38);
+
+    if (preferredWorker) {
+      if (!assignSpecificWorker(preferredWorker, 'builder', key)) {
+        reassignWorkerRoles();
+      }
+    } else if (getFreeCarriersCount() > 0) {
+      b.builders = 1;
+      reassignWorkerRoles();
+    } else if ((S.jobs.woodcutters || 0) > 1) {
+      S.jobs.woodcutters--;
+      b.builders = 1;
+      reassignWorkerRoles();
+    }
+
+    if (b.builders === 1) {
+      showToast(`🔨 ${SITES[key].label} aloitettu! 1 rakentaja siirtyy työmaalle.`);
+    } else {
+      showToast(`🔨 ${SITES[key].label} tilattu! Napauta työläistä ja työmaata määrätäksesi rakentajan.`);
+    }
+    saveGame();
+    if (KV.UI) KV.UI.updateHUD();
+    return true;
+  }
+
+  function chooseCommander(cmdId) {
+    S.commanderId = (cmdId === 'teras') ? 'teras' : 'pippuri';
+    S.commanderChosen = true;
+    const spec = getCommanderSpec();
+    hero.maxHp = spec.maxHp;
+    hero.hp = spec.maxHp;
+    hero.x = SITES.barracks.x;
+    hero.y = SITES.barracks.y + 62;
+    hero.target = null;
+    hero.targetTree = null;
+    world.orcRaidTimer = 115;
+
+    checkUnlocks();
+    clearReservedZones(false);
+    saveGame();
+    if (KV.Audio) KV.Audio.playSfx('build_done', 0.60);
+    showToast(`🎖️ ${spec.name} otti komennon! Puinen Kaarisilta avautui ja örkkivaroitus on aktiivinen!`);
+    if (KV.UI) {
+      KV.UI.refreshCommanderVisuals();
+      KV.UI.updateHUD();
+    }
+  }
+
   function syncEntitiesFromSave() {
+    const spec = getCommanderSpec();
+    hero.maxHp = spec.maxHp;
+    if (hero.hp > hero.maxHp) hero.hp = hero.maxHp;
+
     while (world.workers.length < S.workerCount) {
       const idx = world.workers.length;
       const isFirstCook = idx === 0;
       world.workers.push({
         kind: 'worker',
         female: (idx % 2 === 1),
-        x: isFirstCook ? SITES.kitchen.x - 16 : SITES.ship.x - 36 + (idx % 4) * 24,
-        y: isFirstCook ? SITES.kitchen.y + 52 : SITES.ship.y + 68 + Math.floor(idx / 4) * 18,
+        x: isFirstCook ? SITES.kitchen.x - 16 : SITES.lodge.x - 36 + (idx % 4) * 24,
+        y: isFirstCook ? SITES.kitchen.y + 52 : SITES.lodge.y + 68 + Math.floor(idx / 4) * 18,
         role: 'carrier', siteKey: null, slot: 0,
         step: Math.random() * 6, ang: Math.PI * 0.5,
         faceLeft: false, faceBack: false,
         moving: false, working: false, toolPhase: 0,
-        carry: null, targetTree: null, cookTimer: 0
+        carry: null, targetTree: null, cookTimer: 0,
+        bypassId: null, bypassDir: 1, bypassLock: 0
       });
     }
     while (world.workers.length > S.workerCount) world.workers.pop();
-
-    while (world.oxen.length < S.oxCount) {
-      const idx = world.oxen.length;
-      world.oxen.push({
-        kind: 'ox',
-        x: SITES.oxPen.x - 24 + idx * 24,
-        y: SITES.oxPen.y + 54,
-        step: 0, ang: 0, faceLeft: false, faceBack: false,
-        moving: false, carry: null
-      });
-    }
 
     while (world.soldiers.length < S.soldierCount) {
       const idx = world.soldiers.length;
@@ -511,58 +659,46 @@ window.KV = window.KV || {};
         female: (idx % 2 === 1),
         x: SITES.barracks.x - 20 + idx * 22,
         y: SITES.barracks.y + 58,
-        hp: 130, maxHp: 130, fireCd: 0.5,
+        hp: 140, maxHp: 140, fireCd: 0.5,
         guardPost: savedPost,
-        step: 0, ang: 0, faceLeft: false, faceBack: false, moving: false
+        step: 0, ang: 0, faceLeft: false, faceBack: false, moving: false,
+        bypassId: null, bypassDir: 1, bypassLock: 0
       });
     }
     while (world.soldiers.length > S.soldierCount) world.soldiers.pop();
-
-    if (S.hasSergeant && !world.sergeant) {
-      world.sergeant = {
-        kind: 'sergeant',
-        female: true,
-        x: SITES.barracks.x + 12,
-        y: SITES.barracks.y + 62,
-        hp: 260, maxHp: 260, fireCd: 0.34,
-        guardPost: S.sergeantPost || null,
-        step: 0, ang: 0, faceLeft: false, faceBack: false, moving: false
-      };
-    } else if (!S.hasSergeant) {
-      world.sergeant = null;
-    }
 
     reassignWorkerRoles();
   }
 
   function checkUnlocks() {
     let u = false;
-    if (!S.unlocks.house && S.piles.logsAtForest >= 4) {
-      S.unlocks.house = true; u = true;
-      showToast('🏡 Hirsitalo 1 avattu! Tilaa talo – tontti raivataan metsän reunaan.');
+    if (!S.unlocks.sawmill && S.buildings.lodge.state === 'built') {
+      S.unlocks.sawmill = true;
+      S.unlocks.bigTurnip = true;
+      u = true;
+      clearReservedZones(false);
+      showToast('🪚 Iso Lautatarha & Suuri Naurispelto ilmestyivät punaisina ääriviivoina kartalle!');
     }
-    if (!S.unlocks.bigTurnip && S.workerCount >= 5) {
-      S.unlocks.bigTurnip = true; S.unlocks.sawmill = true; u = true;
-      showToast('🌱 Kylä kasvaa (5 työläistä)! Iso Lautatarha sekä Suuri Naurispelto avautuivat!');
+    if (!S.unlocks.barracks && S.buildings.sawmill.state === 'built') {
+      S.unlocks.barracks = true;
+      u = true;
+      clearReservedZones(false);
+      showToast('🥋 Kaurakaartin Varuskunta ilmestyi kartalle! Rakenna se saadaksesi komentajan!');
     }
-    if (!S.unlocks.oxPen && S.buildings.sawmill.outBoards >= 4) {
-      S.unlocks.oxPen = true; u = true;
-      showToast('🐂 Härkäaitaus avattu! Kesytä Juhta-Härkä nauriilla kantoavuksi ENNEN siltaurakkaa!');
+    if (!S.unlocks.bridgeChain && S.buildings.barracks.state === 'built' && S.commanderChosen) {
+      S.unlocks.bridgeChain = true;
+      u = true;
+      clearReservedZones(false);
     }
-    if (!S.unlocks.oatChain && S.buildings.sawmill.outBoards >= 6) {
-      S.unlocks.oatChain = true; u = true;
-      showToast('🌉 Puinen Kaarisilta sekä itärannan Kaurapelto, Vesimylly ja Leipomo avautuivat!');
+
+    // Jos Varuskunta on valmis mutta komentajaa ei ole vielä valittu, avataan valintaikkuna!
+    if (S.started && S.buildings.barracks.state === 'built' && !S.commanderChosen) {
+      if (KV.UI) KV.UI.openCommanderModal();
     }
-    if (!S.unlocks.barracks && (S.coins >= 1 || (S.buildings.sawmill.outBoards >= 12 && S.workerCount >= 6))) {
-      S.unlocks.barracks = true; u = true;
-      showToast('🥋 Kaurakaartin Kasarmi avattu! Voit kouluttaa kaartilaisia ja Kersantti Kipinän!');
-    }
+
     if (u) {
       if (KV.Audio) KV.Audio.playSfx('build_done', 0.5);
-      const badge = document.getElementById('unlockBadge');
-      if (badge) badge.classList.remove('hidden');
-      const modal = document.getElementById('manageModal');
-      if (modal && !modal.classList.contains('hidden') && KV.UI) KV.UI.renderManageModal();
+      saveGame();
     }
   }
 
@@ -576,6 +712,12 @@ window.KV = window.KV || {};
   KV.world = world;
   KV.State = {
     getRecommendedZoom,
+    getCommanderSpec,
+    getTotalPopulation,
+    getLivingPopulation,
+    getMaxSustainablePop,
+    getStewBurnPerSec,
+    isOutlineVisible,
     saveGame,
     resetSave,
     selectUnit,
@@ -587,6 +729,8 @@ window.KV = window.KV || {};
     getFreeCarriersCount,
     reassignWorkerRoles,
     assignSpecificWorker,
+    startOutlineFromMap,
+    chooseCommander,
     syncEntitiesFromSave,
     checkUnlocks
   };

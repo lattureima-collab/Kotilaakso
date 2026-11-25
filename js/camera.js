@@ -1,14 +1,14 @@
 // ============================================================================
-// js/camera.js – Vapaa kameran siirto, nipistyszoom & yksiköiden suora ohjaus (v8.1)
+// js/camera.js – Kamera, nipistyszoom, punaisten ääriviivojen & rakennusten napautus (v8.2)
 // ============================================================================
 window.KV = window.KV || {};
 
 (() => {
-  const { WORLD_BOUNDS, SITES, RESERVED_PLOTS, getWorkPoint, getRiverCenter, getRiverHalfWidth, BRIDGE_Y } = KV.CFG;
+  const { WORLD_BOUNDS, SITES, BUILDING_KEYS, getWorkPoint, getRiverCenter, getRiverHalfWidth, BRIDGE_X, BRIDGE_Y } = KV.CFG;
   const MIN_ZOOM = 0.48;
   const MAX_ZOOM = 1.25;
 
-  const cam = { x: -185, y: 40 };
+  const cam = { x: -245, y: 25 };
   const keys = {};
   const pointers = new Map();
 
@@ -47,11 +47,13 @@ window.KV = window.KV || {};
   }
 
   function centerOnHero(activate = true) {
+    if (!KV.S.commanderChosen) return;
+    const cmdSpec = KV.State.getCommanderSpec();
     if (KV.S.heroMedbayTimer > 0) {
       cam.x = SITES.ship.x;
       cam.y = SITES.ship.y;
       clampCam();
-      KV.State.showToast(`🏥 Lentäjä toipuu Tähtialuksen hoitokapselissa (${Math.ceil(KV.S.heroMedbayTimer)} s jäljellä)!`);
+      KV.State.showToast(`🏥 ${cmdSpec.name} toipuu Tähtialuksen hoitokapselissa (${Math.ceil(KV.S.heroMedbayTimer)} s)!`);
       return;
     }
     cam.x = KV.hero.x;
@@ -65,7 +67,7 @@ window.KV = window.KV || {};
     let ty = Math.max(WORLD_BOUNDS.minY + 30, Math.min(WORLD_BOUNDS.maxY - 30, wy));
     const rc = getRiverCenter(ty);
     const rw = getRiverHalfWidth(ty);
-    const onBridge = KV.S.buildings.bridge.state === 'built' && Math.abs(ty - BRIDGE_Y) < 28;
+    const onBridge = KV.S.buildings.bridge.state === 'built' && Math.abs(ty - (BRIDGE_Y - 1)) < 24;
     if (!onBridge && Math.abs(tx - rc) < rw + 14) {
       tx = (tx < rc) ? (rc - rw - 20) : (rc + rw + 20);
     }
@@ -83,11 +85,21 @@ window.KV = window.KV || {};
       if (d < bestD) { bestD = d; best = u; }
     };
 
-    if (S.heroMedbayTimer <= 0) consider(hero);
-    if (world.sergeant) consider(world.sergeant);
+    if (S.commanderChosen && S.heroMedbayTimer <= 0) consider(hero);
     world.soldiers.forEach(consider);
     world.workers.forEach(consider);
     return best;
+  }
+
+  function findTappedOutline(wx, wy) {
+    const candidates = ['lodge', 'sawmill', 'turnipFarm', 'barracks', 'bridge', 'mill', 'bakery', 'oatFarm'];
+    for (const key of candidates) {
+      if (!KV.State.isOutlineVisible(key)) continue;
+      const pos = SITES[key];
+      const rad = key === 'bridge' ? 115 : (key.endsWith('Farm') ? 96 : 78);
+      if (Math.hypot(wx - pos.x, wy - pos.y) < rad) return key;
+    }
+    return null;
   }
 
   const ROLE_NAMES_FI = {
@@ -105,15 +117,32 @@ window.KV = window.KV || {};
   function handleWorkerCommandTap(worker, wx, wy) {
     const { S, world } = KV;
 
-    for (const [key, site] of Object.entries(SITES)) {
-      if (!S.buildings[key]) continue;
+    // 1. Jos napautetaan punaista tonttiääriviivaa työläinen valittuna -> aloitetaan ja tämä työläinen = 1 rakentaja!
+    const outlineKey = findTappedOutline(wx, wy);
+    if (outlineKey) {
+      KV.State.startOutlineFromMap(outlineKey, worker);
+      KV.State.selectUnit(null);
+      return true;
+    }
+
+    // 2. Käynnissä olevat työmaat tai valmiit tuotantorakennukset
+    for (const key of BUILDING_KEYS) {
+      const site = SITES[key];
       const b = S.buildings[key];
-      if (b.state === 'none') continue;
-      if (Math.hypot(wx - site.x, wy - site.y) < 68) {
+      if (!b || b.state === 'none') continue;
+      const hitR = key === 'bridge' ? 115 : 74;
+      if (Math.hypot(wx - site.x, wy - site.y) < hitR) {
         if (b.state === 'building' || b.state === 'ruined') {
           if (KV.State.assignSpecificWorker(worker, 'builder', key)) {
             KV.Audio.playSfx('hammer', 0.32);
-            KV.State.showToast(`🔨 Työläinen määrätty rakentamaan kohdetta ${site.label}!`);
+            KV.State.showToast(`🔨 Työläinen määrätty rakentamaan kohdetta ${site.label} (1/1)!`);
+            KV.State.selectUnit(null);
+          }
+          return true;
+        }
+        if (key === 'lodge' && b.state === 'built') {
+          if (KV.State.assignSpecificWorker(worker, 'carrier')) {
+            KV.State.showToast('📦 Työläinen vapautettu yleiseksi kantajaksi!');
             KV.State.selectUnit(null);
           }
           return true;
@@ -165,14 +194,6 @@ window.KV = window.KV || {};
       }
     }
 
-    if (Math.hypot(wx - SITES.ship.x, wy - SITES.ship.y) < 70) {
-      if (KV.State.assignSpecificWorker(worker, 'carrier')) {
-        KV.State.showToast('📦 Työläinen vapautettu yleiseksi kantajaksi!');
-        KV.State.selectUnit(null);
-      }
-      return true;
-    }
-
     if (Math.hypot(wx - SITES.starterGarden.x, wy - SITES.starterGarden.y) < 68) {
       if ((S.jobs.cookGardeners || 0) < 2 && KV.State.assignSpecificWorker(worker, 'cookGardener')) {
         KV.State.showToast('🍲 Työläinen määrätty Kotitarhan ja keittiön hoitajaksi!');
@@ -180,7 +201,7 @@ window.KV = window.KV || {};
       }
       return true;
     }
-    if (S.fields.turnip.active && Math.hypot(wx - SITES.turnipFarm.x, wy - SITES.turnipFarm.y) < 88) {
+    if (S.fields.turnip.active && Math.hypot(wx - SITES.turnipFarm.x, wy - SITES.turnipFarm.y) < 92) {
       if (KV.State.assignSpecificWorker(worker, 'turnipFarmer')) {
         KV.Audio.playSfx('dig', 0.32);
         KV.State.showToast('🌱 Työläinen määrätty Suuren Naurispellon viljelijäksi!');
@@ -188,7 +209,7 @@ window.KV = window.KV || {};
       }
       return true;
     }
-    if (S.fields.oat.active && Math.hypot(wx - SITES.oatFarm.x, wy - SITES.oatFarm.y) < 88) {
+    if (S.fields.oat.active && Math.hypot(wx - SITES.oatFarm.x, wy - SITES.oatFarm.y) < 92) {
       if (KV.State.assignSpecificWorker(worker, 'oatFarmer')) {
         KV.Audio.playSfx('dig', 0.32);
         KV.State.showToast('🌾 Työläinen määrätty Suuren Kaurapellon viljelijäksi!');
@@ -222,7 +243,7 @@ window.KV = window.KV || {};
       return true;
     }
 
-    KV.State.showToast('💡 Napauta puuta, työmaata, sahaa, peltoa, keittiötä tai Tähtialusta määrätäksesi työn!');
+    KV.State.showToast('💡 Napauta puuta, punaista ääriviivaa, työmaata, sahaa, peltoa tai Kylätaloa!');
     return false;
   }
 
@@ -231,35 +252,74 @@ window.KV = window.KV || {};
     let post = sanitizeDryPoint(wx, wy);
     let postName = 'valittuun vartiopaikkaan';
 
-    for (const [key, s] of Object.entries(SITES)) {
-      if (Math.hypot(wx - s.x, wy - s.y) < 66) {
+    for (const key of BUILDING_KEYS) {
+      const s = SITES[key];
+      if (Math.hypot(wx - s.x, wy - s.y) < 70) {
         const wp = getWorkPoint(key);
         post = { x: wp.x, y: wp.y + 8, label: s.label };
         postName = `kohteen ${s.label} suojaksi`;
         break;
       }
     }
-    for (const rp of Object.values(RESERVED_PLOTS)) {
-      if (Math.hypot(wx - rp.x, wy - rp.y) < 58) {
-        post = { x: rp.x, y: rp.y + 16, label: rp.label };
-        postName = `kohteen ${rp.label} luo`;
-        break;
-      }
-    }
 
     unit.guardPost = post;
-    if (unit.kind === 'sergeant') {
-      S.sergeantPost = post;
-      KV.State.showToast(`🔥 Kersantti Kipinä siirtyy vartioon ${postName}!`);
-    } else {
-      const idx = world.soldiers.indexOf(unit);
-      if (idx >= 0) S.soldierPosts[idx] = post;
-      KV.State.showToast(`🛡️ Kaartilainen määrätty vartioon ${postName}!`);
-    }
+    const idx = world.soldiers.indexOf(unit);
+    if (idx >= 0) S.soldierPosts[idx] = post;
+    KV.State.showToast(`🛡️ Kaartilainen määrätty vartioon ${postName}!`);
     world.clickRipples.push({ x: post.x, y: post.y, r: 4, a: 1.0 });
     KV.Audio.playSfx('born', 0.30);
     KV.State.saveGame();
     KV.State.selectUnit(null);
+  }
+
+  function handleDirectMapBuildingTap(wx, wy) {
+    const S = KV.S;
+
+    // 1. Punaiset tonttiääriviivat (aloittaa rakennuksen / pellon yhdellä napautuksella!)
+    const outlineKey = findTappedOutline(wx, wy);
+    if (outlineKey) {
+      KV.State.startOutlineFromMap(outlineKey, null);
+      return true;
+    }
+
+    // 2. Käynnissä oleva työmaa ilman rakentajaa -> liittää vapaan työläisen jos saatavilla
+    for (const key of BUILDING_KEYS) {
+      const b = S.buildings[key];
+      const pos = SITES[key];
+      const hitR = key === 'bridge' ? 110 : 76;
+      if ((b.state === 'building' || b.state === 'ruined') && Math.hypot(wx - pos.x, wy - pos.y) < hitR) {
+        if ((b.builders || 0) === 0 && KV.State.getFreeCarriersCount() > 0) {
+          b.builders = 1;
+          KV.State.reassignWorkerRoles();
+          KV.State.saveGame();
+          KV.Audio.playSfx('hammer', 0.32);
+          KV.State.showToast(`🔨 Vapaa työläinen liittyi rakentamaan kohdetta ${pos.label} (1/1)!`);
+        } else {
+          KV.State.showToast(`🔨 ${pos.label}: valmius ${Math.round(b.prog * 100)}% (Rakentajia: ${b.builders || 0}/1).`);
+        }
+        return true;
+      }
+    }
+
+    // 3. Valmiin Ison Kylätalon, Varuskunnan tai Tähtialuksen napautus -> avaa suoran toimintoikkunan
+    if (S.buildings.lodge.state === 'built' && Math.hypot(wx - SITES.lodge.x, wy - SITES.lodge.y) < 84) {
+      if (KV.UI) KV.UI.openSiteModal('lodge');
+      return true;
+    }
+    if (S.buildings.barracks.state === 'built' && Math.hypot(wx - SITES.barracks.x, wy - SITES.barracks.y) < 76) {
+      if (!S.commanderChosen) {
+        if (KV.UI) KV.UI.openCommanderModal();
+      } else if (KV.UI) {
+        KV.UI.openSiteModal('barracks');
+      }
+      return true;
+    }
+    if (Math.hypot(wx - SITES.ship.x, wy - SITES.ship.y) < 78) {
+      if (KV.UI) KV.UI.openSiteModal('ship');
+      return true;
+    }
+
+    return false;
   }
 
   function bindInput(canvas) {
@@ -291,7 +351,7 @@ window.KV = window.KV || {};
         gesture.prevMidX = (pts[0].x + pts[1].x) * 0.5;
         gesture.prevMidY = (pts[0].y + pts[1].y) * 0.5;
       }
-      KV.Audio.updateSpatialAudio();
+      try { KV.Audio.updateSpatialAudio(); } catch (err) {}
     });
 
     canvas.addEventListener('pointermove', e => {
@@ -353,25 +413,32 @@ window.KV = window.KV || {};
             KV.State.selectUnit(tappedUnit);
             KV.Audio.playSfx('born', 0.28);
             if (tappedUnit === KV.hero) {
-              KV.State.showToast('👨‍🚀 Sankari aktivoitu! Napauta maata, puuta, työmaata tai tarvikelaatikkoa.');
+              const cmdSpec = KV.State.getCommanderSpec();
+              KV.State.showToast(`🎖️ ${cmdSpec.name} aktivoitu! Napauta maata, työmaata, puuta tai tarvikelaatikkoa.`);
             } else if (tappedUnit.kind === 'worker') {
               const rName = ROLE_NAMES_FI[tappedUnit.role] || 'Työläinen';
-              KV.State.showToast(`👷 ${rName} valittu! Napauta puuta, työmaata, sahaa, peltoa tai Tähtialusta.`);
-            } else if (tappedUnit.kind === 'sergeant') {
-              KV.State.showToast('🔥 Kersantti Kipinä valittu! Napauta karttaa tai rakennusta asettaaksesi vartiopaikan.');
+              KV.State.showToast(`👷 ${rName} valittu! Osoita puuta, punaista ääriviivaa, sahaa, peltoa tai keittiötä.`);
             } else if (tappedUnit.kind === 'soldier') {
-              KV.State.showToast('🛡️ Kaartilainen valittu! Napauta karttaa tai rakennusta asettaaksesi vartiopaikan.');
+              KV.State.showToast('🛡️ Kaartilainen valittu! Napauta karttaa asettaaksesi vartiopaikan.');
             }
           }
           return;
         }
 
-        if (!curSel) return;
+        if (!curSel) {
+          handleDirectMapBuildingTap(wPt.x, wPt.y);
+          return;
+        }
 
         if (curSel === KV.hero) {
-          if (KV.S.heroMedbayTimer > 0) {
+          if (!KV.S.commanderChosen || KV.S.heroMedbayTimer > 0) {
             KV.State.selectUnit(null);
             return;
+          }
+          // Myös Kersantti aktiivisena voi napauttaa suoraan punaista ääriviivaa rakennuksen aloittamiseksi!
+          const outlineKey = findTappedOutline(wPt.x, wPt.y);
+          if (outlineKey) {
+            KV.State.startOutlineFromMap(outlineKey, null);
           }
           let clickedTree = null;
           for (let i = 0; i < KV.world.trees.length; i++) {
@@ -388,7 +455,7 @@ window.KV = window.KV || {};
           KV.world.clickRipples.push({ x: cleanTgt.x, y: cleanTgt.y, r: 4, a: 1.0 });
         } else if (curSel.kind === 'worker') {
           handleWorkerCommandTap(curSel, wPt.x, wPt.y);
-        } else if (curSel.kind === 'soldier' || curSel.kind === 'sergeant') {
+        } else if (curSel.kind === 'soldier') {
           handleGuardCommandTap(curSel, wPt.x, wPt.y);
         }
       }
