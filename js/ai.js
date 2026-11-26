@@ -1,5 +1,5 @@
 // ============================================================================
-// js/ai.js – Kahden planeetan tekoäly, Rahtikontti, suurhyökkäykset & Linnake (v8.3)
+// js/ai.js – Kahden planeetan tekoäly, nopeutettu kuljetus & savupiiput (v8.4)
 // ============================================================================
 window.KV = window.KV || {};
 
@@ -140,13 +140,12 @@ window.KV = window.KV || {};
   function moveEntitySmart(ent, tx, ty, speed, dt, customArriveDist = null) {
     const planet = ent.planet || 'valley';
     if (!Number.isFinite(ent.x) || !Number.isFinite(ent.y)) {
-      ent.x = planet === 'crimson' ? MARS_SITES.ship.x : SITES.lodge.x;
-      ent.y = planet === 'crimson' ? MARS_SITES.ship.y + 60 : SITES.lodge.y + 72;
+      ent.x = planet === 'crimson' ? MARS_SITES.depot.x : SITES.lodge.x;
+      ent.y = planet === 'crimson' ? MARS_SITES.depot.y + 48 : SITES.lodge.y + 72;
     }
 
     let goalX = tx, goalY = ty, activeBridgeLaneY = null;
 
-    // Joen ja sillan reititys vain Kotilaaksossa
     if (planet === 'valley') {
       const wpWestX = BRIDGE_X - BRIDGE_APPROACH_OFFSET, wpEastX = BRIDGE_X + BRIDGE_APPROACH_OFFSET;
       const spanWestX = BRIDGE_X - BRIDGE_SPAN_HALF, spanEastX = BRIDGE_X + BRIDGE_SPAN_HALF;
@@ -237,7 +236,8 @@ window.KV = window.KV || {};
     return avail[(worker.slot + Math.floor(Math.random() * Math.min(5, avail.length))) % Math.min(5, avail.length)];
   }
 
-  function findValleyMaterial(key, maxPack = 1) {
+  // Rakentajat ja kantajat kantavat nyt jopa 2 tarviketta kerralla!
+  function findValleyMaterial(key, maxPack = 2) {
     const S = KV.S, b = S.buildings[key];
     if (!b || (b.state !== 'building' && b.state !== 'ruined')) return null;
     if ((key === 'mill' || key === 'bakery') && S.buildings.bridge.state !== 'built') return null;
@@ -267,28 +267,30 @@ window.KV = window.KV || {};
     }
     if (onlyFood) return null;
 
-    // 1. Työmaat ja korjaukset ensin
+    // 1. Työmaat ja korjaukset ensin (2 tarviketta per reissu)
     for (const key of BUILDING_KEYS) {
-      if (key === 'bridge' && (countIncoming('bridge', 'log', W) + countIncoming('bridge', 'board', W)) >= 2) continue;
-      const mj = findValleyMaterial(key, 1);
+      if (key === 'bridge' && (countIncoming('bridge', 'log', W) + countIncoming('bridge', 'board', W)) >= 3) continue;
+      const mj = findValleyMaterial(key, 2);
       if (mj) return mj;
     }
 
-    // 2. Rahtikontin täyttö laskeutumisalustan vieressä (jos kytketty päälle!)
+    // 2. Rahtikontin täyttö (madallettu pataraja 18 annokseen ja 2 tavaraa/reissu!)
     if (S.crimsonUnlocked && S.shipPlanet === 'valley' && S.cargo.fillActive) {
       const podSpot = getLoadSpot('cargoPod', 'valley');
       const incLogs = countIncoming('cargoPod', 'log', W);
       if (S.cargo.logs + incLogs < CARGO_LIMITS.MAX_LOGS && S.piles.logsAtForest > 2) {
-        S.piles.logsAtForest -= 1;
-        return { item: 'log', qty: 1, pickup: SITES.logPile, destKey: 'cargoPod', dest: podSpot, picked: false };
+        const qty = Math.min(maxPack, CARGO_LIMITS.MAX_LOGS - (S.cargo.logs + incLogs), S.piles.logsAtForest - 2);
+        S.piles.logsAtForest -= qty;
+        return { item: 'log', qty, pickup: SITES.logPile, destKey: 'cargoPod', dest: podSpot, picked: false };
       }
       const incBoards = countIncoming('cargoPod', 'board', W);
       if (S.cargo.boards + incBoards < CARGO_LIMITS.MAX_BOARDS && saw.outBoards > 2) {
-        saw.outBoards -= 1;
-        return { item: 'board', qty: 1, pickup: getLoadSpot('sawmill'), destKey: 'cargoPod', dest: podSpot, picked: false };
+        const qty = Math.min(maxPack, CARGO_LIMITS.MAX_BOARDS - (S.cargo.boards + incBoards), saw.outBoards - 2);
+        saw.outBoards -= qty;
+        return { item: 'board', qty, pickup: getLoadSpot('sawmill'), destKey: 'cargoPod', dest: podSpot, picked: false };
       }
       const incStew = countIncoming('cargoPod', 'turnip', W) * 5;
-      if (S.cargo.stew + incStew < CARGO_LIMITS.MAX_STEW && S.stew >= 30) {
+      if (S.cargo.stew + incStew < CARGO_LIMITS.MAX_STEW && S.stew >= 18) {
         S.stew -= 5;
         return { item: 'turnip', qty: 1, pickup: getLoadSpot('kitchen'), destKey: 'cargoPod', dest: podSpot, picked: false };
       }
@@ -308,7 +310,7 @@ window.KV = window.KV || {};
       const qty = Math.min(maxPack, S.piles.oatsAtField); S.piles.oatsAtField -= qty;
       return { item: 'oat', qty, pickup: SITES.oatPile, destKey: 'mill', dest: getLoadSpot('mill'), picked: false };
     }
-    if (saw.state === 'built' && S.piles.logsAtForest > 0 && (saw.rawLogs + countIncoming('sawmill', 'log', W)) < 5 && saw.outBoards < 24) {
+    if (saw.state === 'built' && S.piles.logsAtForest > 0 && (saw.rawLogs + countIncoming('sawmill', 'log', W)) < 6 && saw.outBoards < 24) {
       const qty = Math.min(maxPack, S.piles.logsAtForest); S.piles.logsAtForest -= qty;
       return { item: 'log', qty, pickup: SITES.logPile, destKey: 'sawmill', dest: getLoadSpot('sawmill'), picked: false };
     }
@@ -347,7 +349,6 @@ window.KV = window.KV || {};
     else if (carry.destKey === 'bakery' && carry.item === 'flour') b.rawFlour += carry.qty;
   }
 
-  // --- KOMENTAJAN PÄIVITYS (toimii sillä planeetalla missä Tähtialus on!) ---
   function updateCommander(dt) {
     const { hero, keys, world, S } = KV;
     hero.working = false;
@@ -360,7 +361,7 @@ window.KV = window.KV || {};
 
     if (S.heroMedbayTimer > 0) {
       S.heroMedbayTimer = Math.max(0, S.heroMedbayTimer - dt);
-      hero.x = shipPos.x; hero.y = shipPos.y + 48; hero.moving = false;
+      hero.x = shipPos.x - 66; hero.y = shipPos.y + 42; hero.moving = false;
       hero.hp = Math.max(5, Math.min(hero.maxHp, ((55 - S.heroMedbayTimer) / 55) * hero.maxHp));
       if (S.heroMedbayTimer <= 0) {
         hero.hp = hero.maxHp;
@@ -370,7 +371,6 @@ window.KV = window.KV || {};
       return;
     }
 
-    // Suora WASD/nuoliohjaus vain kun katsotaan samaa planeettaa
     let ix = 0, iy = 0;
     if (S.viewPlanet === p) {
       if (keys['w'] || keys['arrowup']) iy -= 1;
@@ -412,7 +412,7 @@ window.KV = window.KV || {};
         const cr = world.supplyCrates[i];
         if (Math.hypot(hero.x - cr.x, hero.y - cr.y) < 48) {
           S.cratesOpened[cr.id] = true;
-          if (cr.reward === 'boards') S.buildings.sawmill.outBoards += cr.qty;
+          if (cr.reward === 'boards') S.buildings.sawmill.outBoards = Math.min(24, S.buildings.sawmill.outBoards + cr.qty);
           else if (cr.reward === 'stew') S.stew = Math.min(95, S.stew + cr.qty);
           else if (cr.reward === 'coins') S.coins += cr.qty;
           world.supplyCrates.splice(i, 1);
@@ -422,7 +422,6 @@ window.KV = window.KV || {};
       }
     }
 
-    // Taistelutulitus (örkit + Punakiven vartiopesäkkeet ja päälinnake!)
     const orcList = p === 'crimson' ? world.marsOrcs : world.orcs;
     const bulletList = p === 'crimson' ? world.marsBullets : world.bullets;
 
@@ -453,10 +452,46 @@ window.KV = window.KV || {};
       return;
     }
 
+    // Kersantti auttaa myös lähellä olevalla työmaalla molemmilla planeetoilla!
+    if (!hero.moving) {
+      const keysToCheck = p === 'crimson' ? MARS_BUILDING_KEYS : BUILDING_KEYS;
+      const siteTable = p === 'crimson' ? MARS_SITES : SITES;
+      const bTable = p === 'crimson' ? S.mars.buildings : S.buildings;
+      for (const key of keysToCheck) {
+        const b = bTable[key];
+        if (b && (b.state === 'building' || b.state === 'ruined')) {
+          const s = siteTable[key];
+          if (Math.hypot(hero.x - s.x, hero.y - s.y) < (key === 'bridge' ? 128 : 98)) {
+            const allIn = (b.logsIn >= b.logsNeed && b.boardsIn >= b.boardsNeed);
+            const maxAllowed = allIn ? 1.0 : Math.min(0.88, 0.14 + ((b.logsIn + b.boardsIn) / Math.max(1, b.logsNeed + b.boardsNeed)) * 0.74);
+            if (b.prog < maxAllowed) {
+              setFacingFromAngle(hero, Math.atan2(s.y - hero.y, s.x - hero.x));
+              hero.working = true; hero.toolPhase += dt * 8.5;
+              b.prog = Math.min(maxAllowed, b.prog + dt * (1 / 24));
+              if (allIn && b.prog >= 1) {
+                b.prog = 1; b.state = 'built'; b.hp = b.maxHp; b.builders = 0;
+                if (p === 'crimson') {
+                  if (key === 'mKitchen' && S.mars.jobs.cooks === 0) S.mars.jobs.cooks = 1;
+                  if (key === 'starMine' && S.mars.jobs.miners === 0) S.mars.jobs.miners = 1;
+                  KV.State.reassignMarsRoles();
+                } else {
+                  KV.State.clearReservedZones(false);
+                  KV.State.reassignWorkerRoles();
+                  KV.State.checkUnlocks();
+                }
+                KV.Audio.playSfx('build_done', 0.55);
+                KV.State.showToast(`🎉 ${s.label} valmistui!`);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
     if (hero.hp < hero.maxHp && orcList.length === 0) hero.hp = Math.min(hero.maxHp, hero.hp + dt * 3.5);
   }
 
-  // --- PUNAKIVI-PLANEETAN PÄIVITYS ---
   function updateCrimsonPlanet(dt) {
     const { S, world, hero } = KV;
     const M = S.mars;
@@ -468,29 +503,30 @@ window.KV = window.KV || {};
     const cmdSpec = KV.State.getCommanderSpec();
 
     if (M.field.active && M.field.stage === 3) {
-      M.field.prog += dt * (1 / 22);
+      M.field.prog += dt * (1 / 20);
       if (M.field.prog >= 1) { M.field.prog = 0; M.field.stage = 4; }
     }
 
-    // Punakiven työläiset (rakentavat Rahtivaraston puilla, viljelevät kraatterin naurismaata ja louhivat Tähtimalmia)
     world.marsWorkers.forEach(w => {
       w.working = false;
       const boost = (cmdHere && Math.hypot(w.x - hero.x, w.y - hero.y) < 145) ? cmdSpec.auraBoost : 1.0;
       const spd = (hungry && w.role !== 'mCook' && w.role !== 'mFarmer' ? 0.72 : 1.0) * boost;
 
-      const findMarsMat = (bKey) => {
+      const findMarsMat = (bKey, maxPack = 2) => {
         const mb = M.buildings[bKey];
         if (!mb || (mb.state !== 'building' && mb.state !== 'ruined')) return null;
         const dest = getLoadSpot(bKey, 'crimson');
         const needB = mb.boardsNeed - mb.boardsIn - countIncoming(bKey, 'board', world.marsWorkers);
         if (needB > 0 && M.boards > 0) {
-          M.boards--;
-          return { item: 'board', qty: 1, pickup: getLoadSpot('depot', 'crimson'), destKey: bKey, dest, picked: false };
+          const qty = Math.min(maxPack, needB, M.boards);
+          M.boards -= qty;
+          return { item: 'board', qty, pickup: getLoadSpot('depot', 'crimson'), destKey: bKey, dest, picked: false };
         }
         const needL = mb.logsNeed - mb.logsIn - countIncoming(bKey, 'log', world.marsWorkers);
         if (needL > 0 && M.logs > 0) {
-          M.logs--;
-          return { item: 'log', qty: 1, pickup: getLoadSpot('depot', 'crimson'), destKey: bKey, dest, picked: false };
+          const qty = Math.min(maxPack, needL, M.logs);
+          M.logs -= qty;
+          return { item: 'log', qty, pickup: getLoadSpot('depot', 'crimson'), destKey: bKey, dest, picked: false };
         }
         return null;
       };
@@ -508,14 +544,14 @@ window.KV = window.KV || {};
             w.carry = null;
           }
         } else {
-          const mj = findMarsMat(w.siteKey);
+          const mj = findMarsMat(w.siteKey, 2);
           if (mj) w.carry = mj;
           else if (moveEntitySmart(w, wp.x, wp.y, SPEEDS.HUMAN_WALK * spd, dt, 14)) {
             const allIn = (mb.logsIn >= mb.logsNeed && mb.boardsIn >= mb.boardsNeed);
             const maxP = allIn ? 1.0 : Math.min(0.86, 0.15 + ((mb.logsIn + mb.boardsIn) / Math.max(1, mb.logsNeed + mb.boardsNeed)) * 0.70);
             if (mb.prog < maxP) {
               w.working = true; w.toolPhase += dt * 8;
-              mb.prog = Math.min(maxP, mb.prog + dt * (1 / 18) * spd);
+              mb.prog = Math.min(maxP, mb.prog + dt * (1 / 16) * spd);
               if (allIn && mb.prog >= 1) {
                 mb.prog = 1; mb.state = 'built'; mb.hp = mb.maxHp; mb.builders = 0;
                 if (w.siteKey === 'mKitchen' && M.jobs.cooks === 0) M.jobs.cooks = 1;
@@ -541,7 +577,7 @@ window.KV = window.KV || {};
           if (moveEntitySmart(w, fx, fy, SPEEDS.HUMAN_WALK * spd, dt, 14)) {
             if (f.stage === 1 || f.stage === 2 || f.stage === 4) {
               w.working = true; w.toolPhase += dt * 6;
-              f.prog += dt * (1 / 8.5) * spd;
+              f.prog += dt * (1 / 8.0) * spd;
               if (f.prog >= 1) {
                 f.prog = 0;
                 if (f.stage === 4) { f.stage = 2; w.carry = { item: 'turnip', qty: 3, picked: true }; }
@@ -570,7 +606,6 @@ window.KV = window.KV || {};
           M.turnips--;
           w.carry = { item: 'turnip', qty: 1, pickup: MARS_SITES.mTurnipBox, dest: kp, picked: false };
         } else if (moveEntitySmart(w, kp.x, kp.y, SPEEDS.HUMAN_WALK * spd, dt, 14)) {
-          // Pieni hätämuonitus keittiön iduista, jottei tukikohta mene täysjumiin
           w.working = true; w.toolPhase += dt * 4;
           if (M.stew < 20) M.stew += dt * 0.65;
         }
@@ -594,15 +629,14 @@ window.KV = window.KV || {};
           }
         }
       } else {
-        // Vapaa kantaja Punakivellä
         if (w.carry) {
           if (!w.carry.picked) {
             if (moveEntitySmart(w, w.carry.pickup.x, w.carry.pickup.y, SPEEDS.HUMAN_WALK * spd, dt, 18)) w.carry.picked = true;
           } else if (moveEntitySmart(w, w.carry.dest.x, w.carry.dest.y, SPEEDS.HUMAN_CARRY * spd, dt, 18)) {
-            if (w.carry.destKey === 'mKitchen') M.stew = Math.min(110, M.stew + 12);
+            if (w.carry.destKey === 'mKitchen') M.stew = Math.min(110, M.stew + w.carry.qty * 12);
             else {
               const mb = M.buildings[w.carry.destKey];
-              if (mb) { if (w.carry.item === 'log') mb.logsIn++; if (w.carry.item === 'board') mb.boardsIn++; }
+              if (mb) { if (w.carry.item === 'log') mb.logsIn += w.carry.qty; if (w.carry.item === 'board') mb.boardsIn += w.carry.qty; }
             }
             w.carry = null;
           }
@@ -613,7 +647,7 @@ window.KV = window.KV || {};
             job = { item: 'turnip', qty: 1, pickup: MARS_SITES.mTurnipBox, destKey: 'mKitchen', dest: getLoadSpot('mKitchen', 'crimson'), picked: false };
           }
           if (!job) {
-            for (const bk of MARS_BUILDING_KEYS) { job = findMarsMat(bk); if (job) break; }
+            for (const bk of MARS_BUILDING_KEYS) { job = findMarsMat(bk, 2); if (job) break; }
           }
           if (job) w.carry = job;
           else moveEntitySmart(w, MARS_SITES.depot.x - 24 + (w.slot % 3) * 20, MARS_SITES.depot.y + 44, SPEEDS.HUMAN_WALK * 0.8, dt, 16);
@@ -621,7 +655,6 @@ window.KV = window.KV || {};
       }
     });
 
-    // Punakiven kaartilaiset (ampuvat sekä örkkejä että vartiopesäkkeitä ja Päälinnaketta!)
     const ft = M.fortress;
     world.marsSoldiers.forEach((s, idx) => {
       let tgt = null, minD = 330;
@@ -653,9 +686,7 @@ window.KV = window.KV || {};
       }
     });
 
-    // Örkkien Päälinnake & 2 vartiopesäkettä (vaatii kunnon joukon valloitukseen!)
     if (!ft.conquered) {
-      // Jos vartiopesäkkeet ovat pystyssä, päälinnakkeen suojakenttä korjaa itseään nopeasti!
       const regen = (ft.outpostNHp > 0 || ft.outpostSHp > 0) ? 14 : 4.5;
       if (ft.mainHp < ft.mainMax) ft.mainHp = Math.min(ft.mainMax, ft.mainHp + regen * dt);
 
@@ -675,7 +706,6 @@ window.KV = window.KV || {};
       if (ft.outpostSHp > 0) fireTurret(MARS_SITES.outpostS, '_cdOutS', 15, 275);
       fireTurret(MARS_SITES.fortress, '_cdFort', 22, 305);
 
-      // Linnakkeen partioaallot
       world.marsWaveTimer -= dt;
       if (world.marsWaveTimer <= 0 && (world.marsSoldiers.length > 0 || cmdHere)) {
         world.marsWaveTimer = 95;
@@ -688,7 +718,6 @@ window.KV = window.KV || {};
       }
     }
 
-    // Punakiven örkit ja ammukset
     for (let i = world.marsOrcs.length - 1; i >= 0; i--) {
       const o = world.marsOrcs[i];
       let tx = MARS_SITES.mBunker.x, ty = MARS_SITES.mBunker.y, bKey = M.buildings.mBunker.state === 'built' ? 'mBunker' : null;
@@ -724,13 +753,13 @@ window.KV = window.KV || {};
           }
         }
         if (!hit && !ft.conquered) {
-          if (ft.outpostNHp > 0 && Math.hypot(bl.x - MARS_SITES.outpostN.x, bl.y - MARS_SITES.outpostN.y) < 42) {
+          if (ft.outpostNHp > 0 && Math.hypot(bl.x - MARS_SITES.outpostN.x, bl.y - MARS_SITES.outpostN.y) < 44) {
             ft.outpostNHp = Math.max(0, ft.outpostNHp - bl.dmg); hit = true;
             if (ft.outpostNHp === 0) KV.State.showToast('💥 Pohjoinen Vartiopesäke tuhottu!');
-          } else if (ft.outpostSHp > 0 && Math.hypot(bl.x - MARS_SITES.outpostS.x, bl.y - MARS_SITES.outpostS.y) < 42) {
+          } else if (ft.outpostSHp > 0 && Math.hypot(bl.x - MARS_SITES.outpostS.x, bl.y - MARS_SITES.outpostS.y) < 44) {
             ft.outpostSHp = Math.max(0, ft.outpostSHp - bl.dmg); hit = true;
             if (ft.outpostSHp === 0) KV.State.showToast('💥 Eteläinen Vartiopesäke tuhottu!');
-          } else if (Math.hypot(bl.x - MARS_SITES.fortress.x, bl.y - MARS_SITES.fortress.y) < 64) {
+          } else if (Math.hypot(bl.x - MARS_SITES.fortress.x, bl.y - MARS_SITES.fortress.y) < 66) {
             const shieldMul = (ft.outpostNHp > 0 || ft.outpostSHp > 0) ? 0.35 : 1.0;
             ft.mainHp = Math.max(0, ft.mainHp - bl.dmg * shieldMul); hit = true;
             if (ft.mainHp <= 0) {
@@ -744,7 +773,6 @@ window.KV = window.KV || {};
         }
         if (hit) world.marsBullets.splice(i, 1);
       } else {
-        // Etuvartion Bunkkeri puolittaa lähellä olevien puolustajien ottaman vahingon!
         const bunkerOk = M.buildings.mBunker.state === 'built';
         let hit = false;
         for (let j = world.marsSoldiers.length - 1; j >= 0; j--) {
@@ -780,7 +808,6 @@ window.KV = window.KV || {};
     separateGroup(marsUnits, dt, 'crimson');
   }
 
-  // --- PÄÄSILMUKKA (molemmat planeetat pyörivät yhtä aikaa!) ---
   function update(dt) {
     const { S, world, hero } = KV;
     if (!S.started) return;
@@ -790,21 +817,28 @@ window.KV = window.KV || {};
       if (world.flightAnim.timer >= world.flightAnim.dur) world.flightAnim = null;
     }
 
-    // 1. Kotilaakson ruokamenekki, savut ja palavat rauniot
     S.stew = Math.max(0, S.stew - KV.State.getStewBurnPerSec() * dt);
     const isHungry = S.stew <= 0.02;
 
+    // Savupiippujen täsmälliset paikat (Kylätalon vasen savupiippu korjattu!)
     if (S.viewPlanet === 'valley' && Math.random() < 0.25) {
       BUILDING_KEYS.forEach(k => {
         const b = S.buildings[k];
         if (b.state === 'ruined') {
           world.steamPuffs.push({ x: SITES[k].x + (Math.random() - 0.5) * 34, y: SITES[k].y - 18, r: 5, a: 0.75, fire: true });
-        } else if (b.state === 'built' && (k === 'lodge' || k === 'bakery' || k === 'kitchen') && Math.random() < 0.35) {
+        } else if (b.state === 'built' && (k === 'lodge' || k === 'bakery' || k === 'kitchen') && Math.random() < 0.36) {
           if (k === 'kitchen' && isHungry) return;
-          world.steamPuffs.push({ x: SITES[k].x + (k === 'kitchen' ? -15 : 22), y: SITES[k].y - (k === 'kitchen' ? 16 : 58), r: 3.5, a: 0.55, purple: k === 'kitchen' });
+          const sx = k === 'lodge' ? (SITES.lodge.x - 35) : (k === 'kitchen' ? (SITES.kitchen.x - 15) : (SITES.bakery.x + 22));
+          const sy = k === 'lodge' ? (SITES.lodge.y - 68) : (k === 'kitchen' ? (SITES.kitchen.y - 16) : (SITES.bakery.y - 58));
+          world.steamPuffs.push({ x: sx, y: sy, r: 3.5, a: 0.55, purple: k === 'kitchen' });
         }
       });
+    } else if (S.viewPlanet === 'crimson' && Math.random() < 0.22) {
+      if (S.mars.buildings.mKitchen.state === 'built' && S.mars.stew > 0.1) {
+        world.steamPuffs.push({ x: MARS_SITES.mKitchen.x - 15, y: MARS_SITES.mKitchen.y - 16, r: 3.5, a: 0.55, purple: true });
+      }
     }
+
     world.steamPuffs.forEach(p => { p.y -= 15 * dt; p.x += 3.5 * dt; p.r += 3.2 * dt; p.a -= 0.25 * dt; });
     world.steamPuffs = world.steamPuffs.filter(p => p.a > 0);
     world.clickRipples.forEach(rp => { rp.r += 48 * dt; rp.a -= 1.8 * dt; });
@@ -812,7 +846,6 @@ window.KV = window.KV || {};
 
     updateCommander(dt);
 
-    // 2. Kotilaakson kasvu ja pellot
     world.trees.forEach(t => { if (t.regrow > 0) t.regrow = Math.max(0, t.regrow - dt); });
     const lodge = S.buildings.lodge;
     if (lodge.state === 'built' && lodge.growing && !isHungry && world.orcs.length === 0) {
@@ -843,7 +876,6 @@ window.KV = window.KV || {};
       if (f.active && f.stage === 3) { f.prog += dt * (1 / 24); if (f.prog >= 1) { f.prog = 0; f.stage = 4; } }
     });
 
-    // 3. Kotilaakson työläiset
     const cmdInValley = S.commanderChosen && S.shipPlanet === 'valley' && S.heroMedbayTimer <= 0;
     const cmdSpec = KV.State.getCommanderSpec();
 
@@ -881,7 +913,7 @@ window.KV = window.KV || {};
         } else {
           if (!w.targetTree || w.targetTree.regrow > 0 || w.targetTree.decorative) w.targetTree = pickNearestTreeToVillage(w);
           if (w.targetTree && moveEntitySmart(w, w.targetTree.x - 16, w.targetTree.y + 10, SPEEDS.HUMAN_WALK * speedMul, dt, 12)) {
-            w.working = true; w.toolPhase += dt * 7; w.targetTree.cutProg += dt * (1 / 6.2) * speedMul;
+            w.working = true; w.toolPhase += dt * 7; w.targetTree.cutProg += dt * (1 / 6.0) * speedMul;
             if (w.targetTree.cutProg >= 1) { w.targetTree.cutProg = 0; w.targetTree.regrow = 110; w.carry = { item: 'log', qty: 1, picked: true }; w.targetTree = null; }
           }
         }
@@ -893,14 +925,14 @@ window.KV = window.KV || {};
           if (!w.carry.picked) { if (moveEntitySmart(w, w.carry.pickup.x, w.carry.pickup.y, SPEEDS.HUMAN_WALK * speedMul, dt, 18)) w.carry.picked = true; }
           else if (moveEntitySmart(w, wp.x, wp.y, SPEEDS.HUMAN_CARRY * speedMul, dt, 18)) { deliverValleyItem(w.carry); w.carry = null; }
         } else {
-          const mj = findValleyMaterial(w.siteKey, 1);
+          const mj = findValleyMaterial(w.siteKey, 2);
           if (mj) w.carry = mj;
           else if (moveEntitySmart(w, wp.x, wp.y, SPEEDS.HUMAN_WALK * speedMul, dt, 14)) {
             const allIn = (b.logsIn >= b.logsNeed && b.boardsIn >= b.boardsNeed);
             const maxP = allIn ? 1.0 : Math.min(0.88, 0.14 + ((b.logsIn + b.boardsIn) / Math.max(1, b.logsNeed + b.boardsNeed)) * 0.74);
             if (b.prog < maxP) {
               w.working = true; w.toolPhase += dt * 8;
-              b.prog = Math.min(maxP, b.prog + dt * (1 / 19) * speedMul);
+              b.prog = Math.min(maxP, b.prog + dt * (1 / 16) * speedMul);
               if (allIn && b.prog >= 1) {
                 const wasRuined = (b.state === 'ruined');
                 b.prog = 1; b.state = 'built'; b.hp = b.maxHp; b.builders = 0;
@@ -934,11 +966,13 @@ window.KV = window.KV || {};
           else if (moveEntitySmart(w, spot.x, spot.y, SPEEDS.HUMAN_CARRY * speedMul, dt, 16)) { deliverValleyItem(w.carry); w.carry = null; }
         } else if (saw.rawLogs > 0 && saw.outBoards < 24) {
           if (moveEntitySmart(w, spot.x, spot.y, SPEEDS.HUMAN_WALK * speedMul, dt, 14)) {
-            w.working = true; w.toolPhase += dt * 8.5; saw.workProg += dt * (1 / 7.2) * speedMul;
+            w.working = true; w.toolPhase += dt * 8.5; saw.workProg += dt * (1 / 5.8) * speedMul;
             if (saw.workProg >= 1) { saw.workProg = 0; saw.rawLogs--; saw.outBoards = Math.min(24, saw.outBoards + 2); }
           }
         } else if (S.piles.logsAtForest > 0 && saw.outBoards < 24 && countIncoming('sawmill', 'log', world.workers) <= w.slot) {
-          S.piles.logsAtForest--; w.carry = { item: 'log', qty: 1, pickup: SITES.logPile, destKey: 'sawmill', dest: spot, picked: false };
+          const qty = Math.min(2, S.piles.logsAtForest);
+          S.piles.logsAtForest -= qty;
+          w.carry = { item: 'log', qty, pickup: SITES.logPile, destKey: 'sawmill', dest: spot, picked: false };
         } else moveEntitySmart(w, spot.x, spot.y, SPEEDS.HUMAN_WALK * speedMul, dt, 14);
       } else if (w.role === 'miller') {
         const mil = S.buildings.mill, wp = getWorkSpot('mill', 0);
@@ -948,7 +982,7 @@ window.KV = window.KV || {};
           else if (moveEntitySmart(w, wp.x, wp.y, SPEEDS.HUMAN_CARRY * speedMul, dt, 16)) { deliverValleyItem(w.carry); w.carry = null; }
         } else if (mil.rawOats > 0 && mil.outFlour < 12) {
           if (moveEntitySmart(w, wp.x, wp.y, SPEEDS.HUMAN_WALK * speedMul, dt, 14)) {
-            w.working = true; w.toolPhase += dt * 6; mil.workProg += dt * (1 / 8.8) * speedMul;
+            w.working = true; w.toolPhase += dt * 6; mil.workProg += dt * (1 / 8.2) * speedMul;
             if (mil.workProg >= 1) { mil.workProg = 0; mil.rawOats--; mil.outFlour++; }
           }
         } else if (mil.outFlour < 12 && S.piles.oatsAtField > 0 && countIncoming('mill', 'oat', world.workers) === 0) {
@@ -961,9 +995,12 @@ window.KV = window.KV || {};
         if (w.carry) {
           if (!w.carry.picked) { if (moveEntitySmart(w, w.carry.pickup.x, w.carry.pickup.y, SPEEDS.HUMAN_WALK * speedMul, dt, 18)) w.carry.picked = true; }
           else if (moveEntitySmart(w, w.carry.dest.x, w.carry.dest.y, SPEEDS.HUMAN_CARRY * speedMul, dt, 16)) { deliverValleyItem(w.carry); w.carry = null; }
+        } else if (bak.outBreads >= 5 && S.buildings.bridge.state === 'built' && countIncoming('lodge', 'bread', world.workers) === 0 && KV.State.getFreeCarriersCount('valley') === 0) {
+          const qty = Math.min(5, bak.outBreads); bak.outBreads -= qty;
+          w.carry = { item: 'bread', qty, pickup: wp, destKey: 'lodge', dest: getLoadSpot('lodge'), picked: true };
         } else if (bak.rawFlour > 0 && bak.outBreads < 20) {
           if (moveEntitySmart(w, wp.x, wp.y, SPEEDS.HUMAN_WALK * speedMul, dt, 14)) {
-            w.working = true; w.toolPhase += dt * 6; bak.workProg += dt * (1 / 9.2) * speedMul;
+            w.working = true; w.toolPhase += dt * 6; bak.workProg += dt * (1 / 8.8) * speedMul;
             if (bak.workProg >= 1) { bak.workProg = 0; bak.rawFlour--; bak.outBreads += 5; S.everBakedBread = true; }
           }
         } else if (mil.state === 'built' && mil.outFlour > 0 && countIncoming('bakery', 'flour', world.workers) === 0) {
@@ -981,7 +1018,6 @@ window.KV = window.KV || {};
       }
     });
 
-    // 4. Kotilaakson kaartilaiset & koventuvat örkkien polttoiskut!
     world.soldiers.forEach((s, idx) => {
       let targetOrc = null, minD = 350;
       world.orcs.forEach(o => { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d < minD) { minD = d; targetOrc = o; } });
@@ -1028,7 +1064,6 @@ window.KV = window.KV || {};
       }
     }
 
-    // Örkit etenevät sillan yli jopa länsirannan rakennuksille, jos puolustus pettää!
     for (let idx = world.orcs.length - 1; idx >= 0; idx--) {
       const o = world.orcs[idx];
       let tx = null, ty = null, bKey = null;
@@ -1121,7 +1156,6 @@ window.KV = window.KV || {};
     if (cmdInValley) valleyUnits.push(hero);
     separateGroup(valleyUnits, dt, 'valley');
 
-    // 5. Päivitetään Punakivi-planeetta rinnakkain taustalla!
     updateCrimsonPlanet(dt);
 
     world.speech.forEach(s => { s.y -= dt * 11; s.life -= dt; });

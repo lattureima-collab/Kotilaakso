@@ -1,10 +1,10 @@
 // ============================================================================
-// js/camera.js – Kahden planeetan kamera, aluksen, rahtikontin & yksiköiden ohjaus (v8.3)
+// js/camera.js – Kamera, PC-oikeaklikkaus & Tähtialuksen varma klikkaus (v8.4)
 // ============================================================================
 window.KV = window.KV || {};
 
 (() => {
-  const { WORLD_BOUNDS, SITES, MARS_SITES, BUILDING_KEYS, MARS_BUILDING_KEYS, getWorkPoint, getRiverCenter, getRiverHalfWidth, BRIDGE_Y } = KV.CFG;
+  const { WORLD_BOUNDS, SITES, MARS_SITES, BUILDING_KEYS, MARS_BUILDING_KEYS, getRiverCenter, getRiverHalfWidth, BRIDGE_Y } = KV.CFG;
   const MIN_ZOOM = 0.48, MAX_ZOOM = 1.25;
 
   const cam = { x: -245, y: 25 };
@@ -104,6 +104,17 @@ window.KV = window.KV || {};
     return null;
   }
 
+  function isTapOnStarship(wx, wy, planet) {
+    if (KV.S.shipPlanet !== planet) return false;
+    const shipSite = planet === 'crimson' ? MARS_SITES.ship : SITES.ship;
+    return Math.abs(wx - shipSite.x) < 72 && wy >= (shipSite.y - 48) && wy <= (shipSite.y + 60);
+  }
+
+  function isTapOnCargoPod(wx, wy, planet) {
+    if (planet !== 'valley' || !KV.S.crimsonUnlocked || KV.S.shipPlanet !== 'valley') return false;
+    return Math.abs(wx - SITES.cargoPod.x) < 58 && Math.abs(wy - SITES.cargoPod.y) < 46;
+  }
+
   function handleWorkerCommandTap(worker, wx, wy) {
     const { S, world } = KV;
     const p = S.viewPlanet;
@@ -142,7 +153,6 @@ window.KV = window.KV || {};
       return false;
     }
 
-    // Kotilaakson työmääräykset
     for (const key of BUILDING_KEYS) {
       const site = SITES[key], b = S.buildings[key];
       if (!b || b.state === 'none') continue;
@@ -204,25 +214,21 @@ window.KV = window.KV || {};
   function handleDirectBuildingOrPadTap(wx, wy) {
     const S = KV.S, p = S.viewPlanet;
 
-    // 1. Tähtialuksen tai Rahtikontin suora napautus (toimii myös Kersantti aktiivisena!)
-    const shipSite = p === 'crimson' ? MARS_SITES.ship : SITES.ship;
-    if (S.shipPlanet === p && Math.hypot(wx - shipSite.x, wy - shipSite.y) < 66) {
-      if (KV.UI) KV.UI.openSiteModal('ship');
+    if (isTapOnStarship(wx, wy, p)) {
+      KV.UI.openSiteModal('ship');
       return true;
     }
-    if (p === 'valley' && S.crimsonUnlocked && S.shipPlanet === 'valley' && Math.hypot(wx - SITES.cargoPod.x, wy - SITES.cargoPod.y) < 58) {
-      if (KV.UI) KV.UI.openSiteModal('cargoPod');
+    if (isTapOnCargoPod(wx, wy, p)) {
+      KV.UI.openSiteModal('cargoPod');
       return true;
     }
 
-    // 2. Punaiset tonttiääriviivat
     const outlineKey = findTappedOutline(wx, wy, p);
     if (outlineKey) {
       KV.State.startOutlineFromMap(outlineKey, null, p);
       return true;
     }
 
-    // 3. Keskeneräisen tai palaneen työmaan napautus -> liittää vapaan työläisen korjaajaksi/rakentajaksi!
     if (p === 'crimson') {
       for (const k of MARS_BUILDING_KEYS) {
         const mb = S.mars.buildings[k], ms = MARS_SITES[k];
@@ -254,7 +260,7 @@ window.KV = window.KV || {};
     }
 
     if (S.buildings.lodge.state === 'built' && Math.hypot(wx - SITES.lodge.x, wy - SITES.lodge.y) < 84) {
-      if (KV.UI) KV.UI.openSiteModal('lodge');
+      KV.UI.openSiteModal('lodge');
       return true;
     }
     if (S.buildings.barracks.state === 'built' && Math.hypot(wx - SITES.barracks.x, wy - SITES.barracks.y) < 76) {
@@ -266,6 +272,9 @@ window.KV = window.KV || {};
   }
 
   function bindInput(canvas) {
+    // PC: estetään selaimen kontekstivalikko ja vapautetaan valinta hiiren oikealla napilla!
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape') KV.State.selectUnit(null);
       keys[e.key.toLowerCase()] = true;
@@ -277,6 +286,14 @@ window.KV = window.KV || {};
     });
 
     canvas.addEventListener('pointerdown', e => {
+      if (e.button === 2) {
+        if (KV.world.selectedEntity) {
+          KV.State.selectUnit(null);
+          KV.State.showToast('Valinta poistettu.');
+        }
+        return;
+      }
+
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) {
@@ -316,6 +333,7 @@ window.KV = window.KV || {};
     });
 
     const onPointerEnd = e => {
+      if (e.button === 2) return;
       pointers.delete(e.pointerId);
       if (pointers.size === 0) canvas.classList.remove('dragging');
       if (!KV.S.started || KV.world.flightAnim) return;
@@ -326,13 +344,12 @@ window.KV = window.KV || {};
         const z = KV.S.zoom || 0.75;
         const p = KV.S.viewPlanet;
 
-        // Tarkistetaan Tähtialuksen ja Rahtikontin napautus ensin, jotta ne aukeavat aina yhdellä napautuksella!
-        const shipSite = p === 'crimson' ? MARS_SITES.ship : SITES.ship;
-        if (KV.S.shipPlanet === p && Math.hypot(wPt.x - shipSite.x, wPt.y - shipSite.y) < 56) {
+        // Tähtialus ja Rahtikontti aukeavat aina yhdellä napautuksella (myös kyltin kohdalta)!
+        if (isTapOnStarship(wPt.x, wPt.y, p)) {
           KV.UI.openSiteModal('ship');
           return;
         }
-        if (p === 'valley' && KV.S.crimsonUnlocked && KV.S.shipPlanet === 'valley' && Math.hypot(wPt.x - SITES.cargoPod.x, wPt.y - SITES.cargoPod.y) < 54) {
+        if (isTapOnCargoPod(wPt.x, wPt.y, p)) {
           KV.UI.openSiteModal('cargoPod');
           return;
         }
@@ -345,7 +362,7 @@ window.KV = window.KV || {};
           else {
             KV.State.selectUnit(tappedUnit);
             KV.Audio.playSfx('born', 0.28);
-            if (tappedUnit === KV.hero) KV.State.showToast(`🎖️ ${KV.State.getCommanderSpec().name} aktivoitu!`);
+            if (tappedUnit === KV.hero) KV.State.showToast(`🎖️ ${KV.State.getCommanderSpec().name} aktivoitu! (Oikea klikkaus poistaa valinnan)`);
             else if (tappedUnit.kind === 'worker') KV.State.showToast('👷 Työläinen valittu! Osoita työmaa, pelto tai puu.');
             else if (tappedUnit.kind === 'soldier') KV.State.showToast('🛡️ Kaartilainen valittu! Osoita vartio- tai hyökkäyspaikka.');
           }

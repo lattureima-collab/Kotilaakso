@@ -1,5 +1,5 @@
 // ============================================================================
-// js/state.js – Kahden planeetan pelitila, rahtikontti & lentologiikka (v8.3)
+// js/state.js – Kahden planeetan pelitila, tavaranpalautus & luonto (v8.4)
 // ============================================================================
 window.KV = window.KV || {};
 
@@ -22,8 +22,8 @@ window.KV = window.KV || {};
     soundOn: true,
     musicOn: true,
     zoom: null,
-    viewPlanet: 'valley',   // 'valley' | 'crimson'
-    shipPlanet: 'valley',   // missä Tähtialus + Kersantti ovat nyt
+    viewPlanet: 'valley',
+    shipPlanet: 'valley',
     crimsonUnlocked: false,
     commanderChosen: false,
     commanderId: 'pippuri',
@@ -80,7 +80,6 @@ window.KV = window.KV || {};
     soldierCount: 0,
     soldierPosts: [],
 
-    // PUNAKIVI-PLANEETAN TILA
     mars: {
       visited: false,
       logs: 0,
@@ -107,7 +106,6 @@ window.KV = window.KV || {};
     }
   };
 
-  // Yritetään ladata v8.3 tai päivittää v8.2-tallennus saumattomasti v8.3:een!
   let loaded = null;
   try {
     loaded = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem('vegan_space_v8_2') || 'null');
@@ -147,8 +145,8 @@ window.KV = window.KV || {};
   const hero = {
     kind: 'hero',
     planet: S.shipPlanet,
-    x: S.shipPlanet === 'crimson' ? MARS_SITES.ship.x : SITES.barracks.x,
-    y: S.shipPlanet === 'crimson' ? MARS_SITES.ship.y + 58 : SITES.barracks.y + 62,
+    x: S.shipPlanet === 'crimson' ? (MARS_SITES.ship.x - 66) : SITES.barracks.x,
+    y: S.shipPlanet === 'crimson' ? (MARS_SITES.ship.y + 42) : (SITES.barracks.y + 62),
     ang: Math.PI * 0.5,
     faceLeft: false, faceBack: false,
     step: 0, moving: false, working: false, toolPhase: 0,
@@ -159,7 +157,7 @@ window.KV = window.KV || {};
 
   const world = {
     selectedEntity: null,
-    flightAnim: null, // { timer: 0, dur: 3.0, from: 'valley', to: 'crimson', podAttached: true }
+    flightAnim: null,
     trees: [],
     supplyCrates: [],
     forestProps: [],
@@ -178,9 +176,9 @@ window.KV = window.KV || {};
     frostActive: 0,
     orcRaidTimer: 110,
 
-    // Punakivi-planeetan elävät yksiköt ja maasto
     marsRocks: [],
     marsCraters: [],
+    marsPatches: [],
     marsWorkers: [],
     marsSoldiers: [],
     marsOrcs: [],
@@ -188,7 +186,6 @@ window.KV = window.KV || {};
     marsWaveTimer: 45
   };
 
-  // --- KOTILAAKSON VÄESTÖ & RUOKA ---
   function getLivingPopulation() {
     const cmdHere = (S.commanderChosen && S.shipPlanet === 'valley') ? 1 : 0;
     return S.workerCount + S.soldierCount + cmdHere;
@@ -213,14 +210,13 @@ window.KV = window.KV || {};
     return getLivingPopulation() * FOOD_CFG.STEW_PER_PERSON_SEC;
   }
 
-  // --- PUNAKIVEN VÄESTÖ & RUOKA ---
   function getMarsLivingPop() {
     const cmdHere = (S.commanderChosen && S.shipPlanet === 'crimson') ? 1 : 0;
     return S.mars.workerCount + S.mars.soldierCount + cmdHere;
   }
 
   function getMarsMaxPop() {
-    let cap = 3; // Aluksen perusmuonavarasto elättää pienen eturyhmän
+    let cap = 3;
     if (S.mars.buildings.mKitchen.state === 'built' && (S.mars.jobs.cooks || 0) >= 1) cap += 5;
     if (S.mars.field.active && (S.mars.jobs.farmers || 0) >= 1) cap += 5;
     return cap;
@@ -230,7 +226,6 @@ window.KV = window.KV || {};
     return getMarsLivingPop() * (FOOD_CFG.STEW_PER_PERSON_SEC * 0.85);
   }
 
-  // --- TONTTIÄÄRIVIIVOJEN NÄKYVYYS MOLEMMILLA PLANEETOILLA ---
   function isOutlineVisible(key, planet = 'valley') {
     if (planet === 'crimson') {
       if (key === 'mKitchen') return S.mars.buildings.mKitchen.state === 'none';
@@ -281,6 +276,26 @@ window.KV = window.KV || {};
     t.style.opacity = '1';
     clearTimeout(t._tm);
     t._tm = setTimeout(() => { t.style.opacity = '0'; }, 4500);
+  }
+
+  // Palauttaa varatun tai kannossa olevan tavaran takaisin varastoon roolin vaihtuessa!
+  function refundCarriedItem(c, planet = 'valley') {
+    if (!c) return;
+    if (planet === 'crimson') {
+      if (c.item === 'log') S.mars.logs += c.qty;
+      else if (c.item === 'board') S.mars.boards += c.qty;
+      else if (c.item === 'turnip') S.mars.turnips += c.qty;
+      else if (c.item === 'ore') S.starOre += c.qty;
+      return;
+    }
+    if (c.item === 'log') S.piles.logsAtForest = Math.min(30, S.piles.logsAtForest + c.qty);
+    else if (c.item === 'board') S.buildings.sawmill.outBoards = Math.min(24, S.buildings.sawmill.outBoards + c.qty);
+    else if (c.item === 'turnip') {
+      if (c.destKey === 'cargoPod') S.stew = Math.min(95, S.stew + c.qty * 5);
+      else if (!c.fromStarter) S.piles.turnipsAtField += c.qty;
+    } else if (c.item === 'oat') S.piles.oatsAtField += c.qty;
+    else if (c.item === 'flour') S.buildings.mill.outFlour += c.qty;
+    else if (c.item === 'bread') S.buildings.bakery.outBreads += c.qty;
   }
 
   function distToSegment(px, py, x1, y1, x2, y2) {
@@ -346,6 +361,10 @@ window.KV = window.KV || {};
     if (S.buildings.sawmill.state !== 'none' && distToTrailCurve(x, y, SITES.logPile.x, SITES.logPile.y + 16, -175, -345, SITES.sawmill.x, SITES.sawmill.y + 32) < 48) return true;
     if (S.buildings.barracks.state !== 'none' && distToTrailCurve(x, y, lx, ly, -120, -55, SITES.barracks.x, SITES.barracks.y + 36) < 48) return true;
     if (S.buildings.bridge.state !== 'none' && distToTrailCurve(x, y, lx, ly, -40, 38, westBridgeMouth, BRIDGE_Y + 2) < 48) return true;
+    if (S.buildings.bridge.state === 'built') {
+      if (S.buildings.mill.state !== 'none' && distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 2, eastBridgeMouth + 32, -45, SITES.mill.x + 12, SITES.mill.y + 52) < 48) return true;
+      if (S.buildings.bakery.state !== 'none' && distToTrailCurve(x, y, eastBridgeMouth, BRIDGE_Y + 2, 435, 58, SITES.bakery.x, SITES.bakery.y + 32) < 48) return true;
+    }
     return false;
   }
 
@@ -397,22 +416,49 @@ window.KV = window.KV || {};
       }
     }
 
+    // Metsän kaatuneet rungot ja kukkapensaat takaisin!
+    for (let i = 0; i < 85; i++) {
+      const fx = Math.sin(i * 61.7 + 0.4) * 1280;
+      const fy = Math.cos(i * 37.9 + 1.1) * 1080;
+      if (Math.abs(fx - getRiverCenter(fy)) < getRiverHalfWidth(fy) + 46) continue;
+      if (isInsideReservedZone(fx, fy)) continue;
+      world.forestProps.push({
+        x: fx, y: fy,
+        kind: (i % 3 === 0) ? 'fallen_log' : 'flower_bush',
+        scale: 0.80 + (i % 4) * 0.07
+      });
+    }
+
     world.meadowFlora = [];
-    for (let i = 0; i < 320; i++) {
+    for (let i = 0; i < 360; i++) {
       const fx = Math.sin(i * 79.3) * 1550, fy = Math.cos(i * 43.1) * 1350;
       if (Math.abs(fx - getRiverCenter(fy)) < getRiverHalfWidth(fy) + 28) continue;
       world.meadowFlora.push({ x: fx, y: fy, type: (i % 4 === 0) ? 'clover' : 'flower', col: i % 3 === 0 ? '#fde047' : (i % 3 === 1 ? '#ffffff' : '#f9a8d4') });
     }
 
     world.riverBankProps = [];
-    for (let y = -2200; y <= 2200; y += 68) {
+    for (let y = -2200; y <= 2200; y += 64) {
       if (Math.abs(y - BRIDGE_Y) < 68) continue;
       const rc = getRiverCenter(y), rw = getRiverHalfWidth(y), hash = Math.abs(Math.round(y * 13));
-      if (hash % 3 !== 0) world.riverBankProps.push({ x: (hash % 2 === 0) ? (rc - rw + 18) : (rc - rw - 6), y, kind: (hash % 2 === 0) ? 'river_rocks' : 'river_cattails', scale: 0.76, flip: false });
-      if ((hash + 1) % 3 !== 0) world.riverBankProps.push({ x: ((hash + 1) % 2 === 0) ? (rc + rw - 18) : (rc + rw + 6), y: y + 28, kind: ((hash + 1) % 2 === 0) ? 'river_rocks' : 'river_cattails', scale: 0.76, flip: true });
+      if (hash % 3 !== 0) {
+        const isRock = (hash % 2 === 0);
+        world.riverBankProps.push({
+          x: isRock ? (rc - rw + 18) : (rc - rw - 6), y,
+          kind: isRock ? 'river_rocks' : 'river_cattails',
+          scale: 0.72 + (hash % 4) * 0.08, flip: false
+        });
+      }
+      if ((hash + 1) % 3 !== 0) {
+        const isRockE = ((hash + 1) % 2 === 0);
+        world.riverBankProps.push({
+          x: isRockE ? (rc + rw - 18) : (rc + rw + 6), y: y + 28,
+          kind: isRockE ? 'river_rocks' : 'river_cattails',
+          scale: 0.72 + ((hash + 2) % 4) * 0.08, flip: true
+        });
+      }
     }
 
-    // Punakiven kraatterit ja lohkareet (ei yhtään puuta!)
+    // Punakiven kraatterit, kivikerrostumat ja lohkareet
     world.marsCraters = [
       { x: MARS_SITES.mTurnipFarm.x, y: MARS_SITES.mTurnipFarm.y, rx: 135, ry: 78, fertile: true },
       { x: -180, y: -270, rx: 85, ry: 52 },
@@ -420,8 +466,18 @@ window.KV = window.KV || {};
       { x: -690, y: 120,  rx: 72, ry: 44 },
       { x: 430,  y: -300, rx: 88, ry: 50 }
     ];
+    world.marsPatches = [];
+    for (let i = 0; i < 160; i++) {
+      world.marsPatches.push({
+        x: Math.sin(i * 41.3 + 0.5) * 1450,
+        y: Math.cos(i * 29.7 + 1.2) * 1150,
+        rx: 28 + (i % 6) * 16,
+        ry: 16 + (i % 5) * 9,
+        dark: (i % 2 === 0)
+      });
+    }
     world.marsRocks = [];
-    for (let i = 0; i < 110; i++) {
+    for (let i = 0; i < 115; i++) {
       const rx = Math.sin(i * 53.1 + 0.7) * 1180;
       const ry = Math.cos(i * 31.7 + 1.9) * 880;
       const nearSite = Object.values(MARS_SITES).some(ms => Math.hypot(rx - ms.x, ry - ms.y) < 115);
@@ -430,7 +486,6 @@ window.KV = window.KV || {};
     }
   }
 
-  // --- KOTILAAKSON TYÖROOLIT ---
   function getActiveBuilderSum() {
     let sum = 0;
     for (const key of BUILDING_KEYS) {
@@ -496,6 +551,7 @@ window.KV = window.KV || {};
       const spec = roleList[idx];
       w.slot = spec.slot || 0;
       if (w.role !== spec.role || w.siteKey !== spec.siteKey) {
+        if (w.carry) refundCarriedItem(w.carry, 'valley');
         w.carry = null; w.targetTree = null; w.working = false; w.cookTimer = 0;
         w.role = spec.role; w.siteKey = spec.siteKey;
       }
@@ -542,6 +598,7 @@ window.KV = window.KV || {};
       const spec = rList[idx];
       w.slot = spec.slot || 0;
       if (w.role !== spec.role || w.siteKey !== spec.siteKey) {
+        if (w.carry) refundCarriedItem(w.carry, 'crimson');
         w.carry = null; w.working = false; w.cookTimer = 0;
         w.role = spec.role; w.siteKey = spec.siteKey;
       }
@@ -565,6 +622,7 @@ window.KV = window.KV || {};
       if (newRole === 'mBuilder' && newSiteKey && M.buildings[newSiteKey]) M.buildings[newSiteKey].builders = 1;
       else if (mapM[newRole]) M.jobs[mapM[newRole]] = (M.jobs[mapM[newRole]] || 0) + 1;
 
+      if (worker.carry) refundCarriedItem(worker.carry, 'crimson');
       worker.carry = null; worker.working = false; worker.role = newRole; worker.siteKey = newSiteKey;
       saveGame();
       return true;
@@ -588,6 +646,7 @@ window.KV = window.KV || {};
     if (newRole === 'builder' && newSiteKey && S.buildings[newSiteKey]) S.buildings[newSiteKey].builders = 1;
     else if (roleToJobKey[newRole]) S.jobs[roleToJobKey[newRole]] = (S.jobs[roleToJobKey[newRole]] || 0) + 1;
 
+    if (worker.carry) refundCarriedItem(worker.carry, 'valley');
     worker.carry = null; worker.working = false; worker.cookTimer = 0;
     worker.role = newRole; worker.siteKey = newSiteKey; worker.targetTree = specificTree || null;
     saveGame();
@@ -613,7 +672,7 @@ window.KV = window.KV || {};
       if (KV.Audio) KV.Audio.playSfx('hammer', 0.38);
       if (preferredWorker) assignSpecificWorker(preferredWorker, 'mBuilder', key);
       else if (getFreeCarriersCount('crimson') > 0) { mb.builders = 1; reassignMarsRoles(); }
-      showToast(`🔨 ${MARS_SITES[key].label} aloitettu! Rakentaja hakee hirret ja laudat Rahtivarastosta.`);
+      showToast(`🔨 ${MARS_SITES[key].label} aloitettu! Rakentaja hakee tarvikkeet Rahtivarastosta.`);
       saveGame();
       return true;
     }
@@ -647,22 +706,25 @@ window.KV = window.KV || {};
     return true;
   }
 
-  // --- TÄHTIALUKSEN LENTO KONTTEINEEN JA MIEHISTÖINEEN ---
   function launchStarship(moveWorkers = 0, moveSoldiers = 0) {
     if (!S.commanderChosen || S.heroMedbayTimer > 0 || world.flightAnim) return false;
 
     const fromP = S.shipPlanet;
     const toP = fromP === 'valley' ? 'crimson' : 'valley';
 
+    // Palautetaan lähtevien työläisten mahdolliset kantamukset varastoon ennen nousua
     if (fromP === 'valley') {
       const wTake = Math.max(0, Math.min(moveWorkers, Math.max(0, S.workerCount - 2)));
       const sTake = Math.max(0, Math.min(moveSoldiers, S.soldierCount));
+      for (let i = world.workers.length - 1; i >= world.workers.length - wTake && i >= 0; i--) {
+        if (world.workers[i].carry) refundCarriedItem(world.workers[i].carry, 'valley');
+        world.workers[i].carry = null;
+      }
       S.workerCount -= wTake;
       S.soldierCount -= sTake;
       S.mars.workerCount += wTake;
       S.mars.soldierCount += sTake;
 
-      // Kiinnitetään Rahtikontin sisältö alukseen ja puretaan Punakiven Rahtivarastoon!
       S.mars.logs += S.cargo.logs;
       S.mars.boards += S.cargo.boards;
       S.mars.stew = Math.min(110, S.mars.stew + S.cargo.stew);
@@ -673,27 +735,31 @@ window.KV = window.KV || {};
     } else {
       const wBack = Math.max(0, Math.min(moveWorkers, S.mars.workerCount));
       const sBack = Math.max(0, Math.min(moveSoldiers, S.mars.soldierCount));
+      for (let i = world.marsWorkers.length - 1; i >= world.marsWorkers.length - wBack && i >= 0; i--) {
+        if (world.marsWorkers[i].carry) refundCarriedItem(world.marsWorkers[i].carry, 'crimson');
+        world.marsWorkers[i].carry = null;
+      }
       S.mars.workerCount -= wBack;
       S.mars.soldierCount -= sBack;
       S.workerCount += wBack;
       S.soldierCount += sBack;
 
-      // Tuodaan Punakivellä louhittu Tähtimalmi mukana!
       if (S.mars.oreAtMine > 0) {
         S.starOre += S.mars.oreAtMine;
         S.mars.oreAtMine = 0;
       }
     }
 
-    world.flightAnim = { timer: 0, dur: 2.6, from: fromP, to: toP };
+    world.flightAnim = { timer: 0, dur: 2.4, from: fromP, to: toP };
     S.shipPlanet = toP;
     hero.planet = toP;
     hero.target = null;
     hero.targetTree = null;
+    // Asetetaan Kersantti aluksen sivuun, jotta hän ei peitä Tähtialuksen klikkausta!
     if (toP === 'crimson') {
-      hero.x = MARS_SITES.ship.x; hero.y = MARS_SITES.ship.y + 58;
+      hero.x = MARS_SITES.ship.x - 68; hero.y = MARS_SITES.ship.y + 42;
     } else {
-      hero.x = SITES.ship.x; hero.y = SITES.ship.y + 58;
+      hero.x = SITES.ship.x - 68; hero.y = SITES.ship.y + 42;
     }
 
     syncEntitiesFromSave();
@@ -729,7 +795,6 @@ window.KV = window.KV || {};
     hero.planet = S.shipPlanet;
     if (hero.hp > hero.maxHp) hero.hp = hero.maxHp;
 
-    // Kotilaakson yksiköt
     while (world.workers.length < S.workerCount) {
       const idx = world.workers.length;
       world.workers.push({
@@ -742,7 +807,10 @@ window.KV = window.KV || {};
         bypassId: null, bypassDir: 1, bypassLock: 0
       });
     }
-    while (world.workers.length > S.workerCount) world.workers.pop();
+    while (world.workers.length > S.workerCount) {
+      const rem = world.workers.pop();
+      if (rem && rem.carry) refundCarriedItem(rem.carry, 'valley');
+    }
 
     while (world.soldiers.length < S.soldierCount) {
       const idx = world.soldiers.length;
@@ -756,25 +824,27 @@ window.KV = window.KV || {};
     }
     while (world.soldiers.length > S.soldierCount) world.soldiers.pop();
 
-    // Punakiven yksiköt
     while (world.marsWorkers.length < S.mars.workerCount) {
       const idx = world.marsWorkers.length;
       world.marsWorkers.push({
         kind: 'worker', planet: 'crimson', female: (idx % 2 === 0),
-        x: MARS_SITES.ship.x - 20 + (idx % 4) * 22, y: MARS_SITES.ship.y + 62,
+        x: MARS_SITES.depot.x - 20 + (idx % 4) * 22, y: MARS_SITES.depot.y + 48,
         role: 'mCarrier', siteKey: null, slot: 0,
         step: Math.random() * 6, ang: 1.5, faceLeft: false, faceBack: false,
         moving: false, working: false, toolPhase: 0, carry: null, cookTimer: 0,
         bypassId: null, bypassDir: 1, bypassLock: 0
       });
     }
-    while (world.marsWorkers.length > S.mars.workerCount) world.marsWorkers.pop();
+    while (world.marsWorkers.length > S.mars.workerCount) {
+      const rem = world.marsWorkers.pop();
+      if (rem && rem.carry) refundCarriedItem(rem.carry, 'crimson');
+    }
 
     while (world.marsSoldiers.length < S.mars.soldierCount) {
       const idx = world.marsSoldiers.length;
       world.marsSoldiers.push({
         kind: 'soldier', planet: 'crimson', female: (idx % 2 === 1),
-        x: MARS_SITES.ship.x + 15 + (idx % 4) * 18, y: MARS_SITES.ship.y + 66,
+        x: MARS_SITES.depot.x + 25 + (idx % 4) * 18, y: MARS_SITES.depot.y + 52,
         hp: 150, maxHp: 150, fireCd: 0.5, guardPost: S.mars.soldierPosts[idx] || null,
         step: 0, ang: 0, faceLeft: false, faceBack: false, moving: false,
         bypassId: null, bypassDir: 1, bypassLock: 0
@@ -823,7 +893,7 @@ window.KV = window.KV || {};
     getTotalPopulation, getLivingPopulation, getMaxSustainablePop, getStewBurnPerSec,
     getMarsLivingPop, getMarsMaxPop, getMarsStewBurnPerSec,
     isOutlineVisible, switchViewPlanet, launchStarship,
-    saveGame, resetSave, selectUnit, addSpeech, showToast,
+    saveGame, resetSave, selectUnit, addSpeech, showToast, refundCarriedItem,
     isInsideReservedZone, clearReservedZones,
     getAssignedTotal, getFreeCarriersCount,
     reassignWorkerRoles, reassignMarsRoles,

@@ -1,5 +1,5 @@
 // ============================================================================
-// js/ui.js – Planeetanvaihto, Rahtikontin kytkin & Tähtialuksen lentovalikko (v8.3)
+// js/ui.js – Planeetanvaihto, Rahtikontti, Lentovalikko & Työmaat (v8.4)
 // ============================================================================
 window.KV = window.KV || {};
 
@@ -52,6 +52,7 @@ window.KV = window.KV || {};
     document.getElementById('heroNameHud').textContent = spec.shortName;
 
     if (S.heroMedbayTimer > 0) {
+      btn.classList.remove('hero-active');
       txt.textContent = `${spec.shortName} Hoitokapselissa (${Math.ceil(S.heroMedbayTimer)}s)`;
       return;
     }
@@ -66,7 +67,6 @@ window.KV = window.KV || {};
     const onMars = S.viewPlanet === 'crimson';
     const M = S.mars;
 
-    // Planeetanvaihtonappi + hälytys jos toisella planeetalla on örkki-isku!
     const pBtn = document.getElementById('planetSwitchBtn');
     if (pBtn) {
       pBtn.classList.toggle('hidden', !M.visited);
@@ -109,7 +109,6 @@ window.KV = window.KV || {};
     document.getElementById('coinTxt').textContent = S.coins;
     document.getElementById('oreTxt').textContent = S.starOre;
 
-    // Sää & ennakkovaroitus Kotilaakson suurhyökkäyksestä myös Punakivellä oltaessa!
     if (world.orcs.length > 0) {
       document.getElementById('weatherTxt').innerHTML = '<strong style="color:#fca5a5">🔥 KOTILAAKSO HYÖKKÄYKSEN ALLA!</strong>';
     } else if (S.commanderChosen && !M.fortress.conquered && world.orcRaidTimer < 45) {
@@ -147,7 +146,6 @@ window.KV = window.KV || {};
     }
   }
 
-  // Rakennetaan modaalin DOM VAIN KERRAN avattaessa, jotta jokainen painallus toimii välittömästi!
   function openSiteModal(siteKey) {
     activeSiteModalKey = siteKey;
     const S = KV.S;
@@ -276,7 +274,9 @@ window.KV = window.KV || {};
 
       document.getElementById('shipModalSummary').innerHTML = !S.crimsonUnlocked
         ? '🔒 Rakenna ensin Kaarisilta ja paista ensimmäinen erä leipää avataksesi planeettalennot!'
-        : `Lentäjä: <strong>${cmdSpec.name}</strong> • Matkustajakapasiteetti: <strong>${boardingWorkers + boardingSoldiers}/${CARGO_LIMITS.MAX_PASSENGERS}</strong>.`;
+        : (S.heroMedbayTimer > 0
+          ? `🏥 ${cmdSpec.name} toipuu vielä hoitokapselissa (${Math.ceil(S.heroMedbayTimer)} s) ennen lähtöä!`
+          : `Lentäjä: <strong>${cmdSpec.name}</strong> • Matkustajakapasiteetti: <strong>${boardingWorkers + boardingSoldiers}/${CARGO_LIMITS.MAX_PASSENGERS}</strong>.`);
       document.getElementById('shipWorkerHint').textContent = fromValley ? `Kotilaaksoon jää aina vähintään 2 työläistä (Saatavilla: ${maxW}).` : `Punakivellä nyt: ${maxW} työläistä.`;
       document.getElementById('shipSoldierHint').textContent = fromValley ? `Jätä kaartilaisia myös Kotilaakson suojaksi! (Saatavilla: ${maxS}).` : `Punakivellä nyt: ${maxS} kaartilaista.`;
 
@@ -306,7 +306,7 @@ window.KV = window.KV || {};
 
     if (activeSiteModalKey === 'cargoPod') {
       titleEl.textContent = '📦 Tähtialuksen Rahtikontti';
-      sumEl.innerHTML = 'Punakivi-planeetalla ei kasva puita! Kun täyttö on päällä, vapaat kantajat kantavat ylimääräiset tukit, laudat ja muonan valmiiksi konttiin.';
+      sumEl.innerHTML = 'Punakivi-planeetalla ei kasva puita! Kun täyttö on päällä, vapaat kantajat kantavat tukit, laudat ja muonan valmiiksi konttiin.';
       cTitle.textContent = `Sisältö nyt: 🌲 ${S.cargo.logs}/${CARGO_LIMITS.MAX_LOGS} • 🪵 ${S.cargo.boards}/${CARGO_LIMITS.MAX_BOARDS} • 🍲 ${S.cargo.stew}/${CARGO_LIMITS.MAX_STEW}`;
       cDesc.textContent = S.cargo.fillActive
         ? '🟢 Kantajat täyttävät konttia (jättää aina pienen hätävaran Kotilaaksoon).'
@@ -350,8 +350,43 @@ window.KV = window.KV || {};
   function renderManageModal() {
     const S = KV.S;
     const onMars = S.viewPlanet === 'crimson';
+    const cmdSpec = KV.State.getCommanderSpec();
+
     document.getElementById('manageTitleHdr').textContent = onMars ? '🔴 Punakiven Etutukikohta' : '🏡 Kotilaakson Työnjako';
     document.getElementById('freeCarriersHdr').textContent = KV.State.getFreeCarriersCount(S.viewPlanet);
+
+    // Hoitokapselin pikakorjaus molemmilla planeetoilla
+    const medBanner = document.getElementById('medbayBanner');
+    if (S.commanderChosen && S.heroMedbayTimer > 0) {
+      medBanner.classList.remove('hidden');
+      const stewPool = S.shipPlanet === 'crimson' ? S.mars.stew : S.stew;
+      const canHeal = stewPool >= 12;
+      medBanner.innerHTML = `
+        <div class="job-info">
+          <img src="assets/starship.png" class="card-thumb" alt="">
+          <div>
+            <strong>🏥 Hoitokapseli: ${cmdSpec.name} (${Math.ceil(S.heroMedbayTimer)} s)</strong>
+            <span>Pikakorjaa varusteet heti (12 🍲).</span>
+          </div>
+        </div>
+        <button class="buy-btn green" id="instantHealBtn" ${!canHeal ? 'disabled' : ''}>Pikakorjaa (12 🍲)</button>
+      `;
+      const hBtn = document.getElementById('instantHealBtn');
+      if (hBtn && canHeal) {
+        hBtn.onclick = () => {
+          if (S.shipPlanet === 'crimson') S.mars.stew = Math.max(0, S.mars.stew - 12);
+          else S.stew = Math.max(0, S.stew - 12);
+          S.heroMedbayTimer = 0;
+          KV.hero.hp = KV.hero.maxHp;
+          KV.Audio.playSfx('build_done', 0.55);
+          KV.State.saveGame();
+          renderManageModal();
+          updateHUD();
+        };
+      }
+    } else {
+      medBanner.classList.add('hidden');
+    }
 
     const jobsBox = document.getElementById('jobsContainer');
     const sitesBox = document.getElementById('activeSitesContainer');
@@ -360,9 +395,12 @@ window.KV = window.KV || {};
 
     if (onMars) {
       const M = S.mars;
-      document.getElementById('foodRateHdr').textContent = `🍲 Kenttämuona: ${Math.ceil(M.stew)} • Kantokyky: ${KV.State.getMarsLivingPop()}/${KV.State.getMarsMaxPop()} hahmoa.`;
+      document.getElementById('foodRateHdr').textContent =
+        `🍲 Kenttämuona: ${Math.ceil(M.stew)} • Rahtivarasto: 🌲${M.logs} 🪵${M.boards} • Kantokyky: ${KV.State.getMarsLivingPop()}/${KV.State.getMarsMaxPop()} hahmoa.`;
 
+      let anyMarsJob = false;
       const addMarsJob = (jk, thumb, title, desc, maxA) => {
+        anyMarsJob = true;
         const cur = M.jobs[jk] || 0;
         const canAdd = KV.State.getFreeCarriersCount('crimson') > 0 && cur < maxA;
         const row = document.createElement('div');
@@ -386,6 +424,43 @@ window.KV = window.KV || {};
       if (M.buildings.mKitchen.state === 'built') addMarsJob('cooks', 'kitchen', '🍲 Kenttäkokki (Max 1)', 'Keittää pataa Punakiven joukoille.', 1);
       if (M.field.active) addMarsJob('farmers', 'char_farmer_f', '🌱 Kraatteriviljelijä (Max 2)', 'Kasvattaa nauriita kraatterin pohjalla.', 2);
       if (M.buildings.starMine.state === 'built') addMarsJob('miners', 'char_woodcutter', '💎 Tähtimalmin louhija (Max 2)', 'Louhii Tähtimalmia vallatusta kraatterista!', 2);
+
+      if (!anyMarsJob) {
+        jobsBox.innerHTML = '<p style="font-size:0.82rem;color:#cbd5e1;padding:4px 2px;">Rakenna ensin Kenttäkeittiö punaista ääriviivaa napauttamalla, niin saat avattua kenttäkokin ja kraatterin naurismaan!</p>';
+      }
+
+      let anyMarsSite = false;
+      for (const k of MARS_BUILDING_KEYS) {
+        const mb = M.buildings[k];
+        if (mb.state !== 'building' && mb.state !== 'ruined') continue;
+        anyMarsSite = true;
+        const canAdd = (mb.builders || 0) < 1 && KV.State.getFreeCarriersCount('crimson') > 0;
+        const card = document.createElement('div');
+        card.className = 'build-card active-site';
+        card.innerHTML = `
+          <div class="job-info">
+            <img src="assets/scaffolding.png" class="card-thumb" alt="">
+            <div>
+              <strong>🔨 ${MARS_SITES[k].label} (${Math.round(mb.prog * 100)}%)</strong>
+              <span>Tarvikkeet: 🌲${mb.logsIn}/${mb.logsNeed} • 🪵${mb.boardsIn}/${mb.boardsNeed}</span>
+            </div>
+          </div>
+          <div class="stepper">
+            <button class="step-btn" data-b="-1" ${(mb.builders || 0) <= 0 ? 'disabled' : ''}>−</button>
+            <span class="step-val">${mb.builders || 0}/1</span>
+            <button class="step-btn" data-b="1" ${!canAdd ? 'disabled' : ''}>+</button>
+          </div>`;
+        card.querySelectorAll('.step-btn').forEach(btn => {
+          btn.onclick = () => {
+            mb.builders = Math.max(0, Math.min(1, (mb.builders || 0) + Number(btn.dataset.b)));
+            KV.State.reassignMarsRoles(); KV.State.saveGame(); renderManageModal(); updateHUD();
+          };
+        });
+        sitesBox.appendChild(card);
+      }
+      if (!anyMarsSite) {
+        sitesBox.innerHTML = '<p style="font-size:0.82rem;color:#cbd5e1;padding:4px 2px;">Ei aktiivisia työmaita Punakivellä. Napauta punaista ääriviivaa maastossa aloittaaksesi!</p>';
+      }
       return;
     }
 
@@ -420,6 +495,39 @@ window.KV = window.KV || {};
     if (S.fields.oat.active) addValleyJob('oatFarmers', 'item_oat', '🌾 Kauraviljelijät', 'Kasvattaa kauraa Vesimyllylle.');
     if (S.buildings.mill.state === 'built') addValleyJob('millers', 'watermill', '⚙️ Mylläri (Max 1)', 'Jauhaa jauhosäkkejä.', 1);
     if (S.buildings.bakery.state === 'built') addValleyJob('bakers', 'char_baker_f', '🥖 Leipuri (Max 1)', 'Paistaa leipäkoreja (+1 🪙 / 5 leipää).', 1);
+
+    let anyValleySite = false;
+    for (const key of BUILDING_KEYS) {
+      const b = S.buildings[key];
+      if (b.state !== 'building' && b.state !== 'ruined') continue;
+      anyValleySite = true;
+      const canAdd = (b.builders || 0) < 1 && KV.State.getFreeCarriersCount('valley') > 0;
+      const card = document.createElement('div');
+      card.className = 'build-card active-site';
+      card.innerHTML = `
+        <div class="job-info">
+          <img src="assets/scaffolding.png" class="card-thumb" alt="">
+          <div>
+            <strong>${b.state === 'ruined' ? '🔥 Korjaus:' : '🔨'} ${SITES[key].label} (${Math.round(b.prog * 100)}%)</strong>
+            <span>Tarvikkeet: 🌲${b.logsIn}/${b.logsNeed} ${b.boardsNeed ? `• 🪵${b.boardsIn}/${b.boardsNeed}` : ''}</span>
+          </div>
+        </div>
+        <div class="stepper">
+          <button class="step-btn" data-b="-1" ${(b.builders || 0) <= 0 ? 'disabled' : ''}>−</button>
+          <span class="step-val">${b.builders || 0}/1</span>
+          <button class="step-btn" data-b="1" ${!canAdd ? 'disabled' : ''}>+</button>
+        </div>`;
+      card.querySelectorAll('.step-btn').forEach(btn => {
+        btn.onclick = () => {
+          b.builders = Math.max(0, Math.min(1, (b.builders || 0) + Number(btn.dataset.b)));
+          KV.State.reassignWorkerRoles(); KV.State.saveGame(); renderManageModal(); updateHUD();
+        };
+      });
+      sitesBox.appendChild(card);
+    }
+    if (!anyValleySite) {
+      sitesBox.innerHTML = '<p style="font-size:0.82rem;color:#cbd5e1;padding:4px 2px;">Ei aktiivisia työmaita Kotilaaksossa.</p>';
+    }
   }
 
   function bindUIButtons() {
