@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#23491d" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Vegan Space Rescue – Kotilaakso v8.2</title>
+  <title>Vegan Space Rescue – v8.3 Kaksi Planeettaa</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -15,29 +15,39 @@
   <div id="hud">
     <div class="hud-scroll-row">
       <div class="hud-group">
-        <div class="pill hidden" id="heroPill" title="Komentajan kunto (jos 0 %, evakuoidaan Tähtialuksen hoitokapseliin)">
+        <button class="pill hidden" id="planetSwitchBtn" style="background:#7c2d12;border-color:#fb923c;color:#ffedd5;font-weight:700;" title="Vaihda kameranäkymää Kotilaakson ja Punakiven välillä">
+          🌍 Kotilaakso ⇄ 🔴 Punakivi
+        </button>
+
+        <div class="pill hidden" id="heroPill" title="Komentajan kunto">
           <img id="heroHudIcon" src="assets/char_sergeant.png" class="ico" alt="">
           <strong id="heroNameHud" style="font-size:0.76rem;margin-right:2px;">Pippuri</strong>
           <span id="suitTxt">100%</span>
           <div class="bar-mini"><div id="suitBar" class="bar-fill" style="width:100%;background:var(--green)"></div></div>
         </div>
-        <div class="pill" title="Vapaat kantajat / Kaikki työläiset">
-          <img src="assets/char_builder_f.png" class="ico" alt=""> <span id="popTxt">3/4</span>
+
+        <div class="pill" title="Vapaat työläiset / Kaikki työläiset katsotulla planeetalla">
+          <img src="assets/char_builder_f.png" class="ico" alt=""> <span id="popTxt">2/4</span>
         </div>
-        <div class="pill" id="stewPill" title="Kyläkeittiön Naurispata & Ruokahuollon kantokyky (Nykyinen väki / Maksimi)">
+
+        <div class="pill" id="stewPill" title="Naurispata & Ruokahuollon kantokyky katsotulla planeetalla">
           <img src="assets/icon_turnip.png" class="ico" alt=""> <span id="stewTxt">34</span> • <span id="foodCapTxt">Väki 4/6</span>
         </div>
-        <div class="pill" title="Tukit tukkipinossa & Laudat lautatarhassa">
+
+        <div class="pill" title="Tukit & Laudat katsotulla planeetalla">
           <img src="assets/item_log.png" class="ico" alt=""> <span id="logTxt">0</span> •
           <img src="assets/item_board.png" class="ico" alt=""> <span id="boardTxt">0</span>
         </div>
-        <div class="pill" title="Kaura -> Jauhosäkit -> Leivät (5 leipää Kylätalolle = +1 Space Coin)">
+
+        <div class="pill" id="valleyGrainPill" title="Kotilaakson Kaura -> Jauhot -> Leivät (+1 kolikko / 5 leipää)">
           <img src="assets/item_oat.png" class="ico" alt=""> <span id="oatTxt">0</span> •
           <img src="assets/item_flour.png" class="ico" alt=""> <span id="flourTxt">0</span> •
           <img src="assets/bread_coin.png" class="ico" alt=""> <span id="breadTxt">0/5</span>
         </div>
-        <div class="pill" title="Space Coins & Puolustusjoukot">
+
+        <div class="pill" title="Space Coins, Tähtimalmi & Puolustusjoukot katsotulla planeetalla">
           🪙 <span id="coinTxt">0</span> •
+          💎 <span id="oreTxt">0</span> •
           <img src="assets/char_soldier.png" class="ico" alt=""> <span id="solTxt">0</span>
         </div>
       </div>
@@ -51,7 +61,7 @@
     </div>
 
     <div class="status-strip">
-      <span class="goal-text" id="nextGoalTxt">⭐ Tavoite: Napauta kyläläistä ja puuta kaataaksesi tukkeja, ja napauta Ison Kylätalon punaista ääriviivaa!</span>
+      <span class="goal-text" id="nextGoalTxt">⭐ Tavoite: Rakenna Iso Kylätalo ja Kaurakaartin Varuskunta!</span>
       <span id="weatherTxt">☀️ Kirkas</span>
     </div>
   </div>
@@ -60,14 +70,14 @@
 
   <!-- ALAPALKIN PÄÄTOIMINNOT -->
   <div id="actionBar">
-    <button id="heroFocusBtn" class="act-btn blue hidden" title="Keskitä kamera komentajaan ja aktivoi ohjaus">
+    <button id="heroFocusBtn" class="act-btn blue hidden" title="Keskitä kamera komentajaan">
       🎖️ <span id="heroBtnTxt">Aktivoi Kersantti</span>
     </button>
     <button id="manageBtn" class="act-btn">
       ⚒️ Työnjako & Tilanne <span id="unlockBadge" class="badge-dot hidden">!</span>
     </button>
     <button id="spaceLaunchBtn" class="act-btn purple hidden">
-      🚀 Nouse Tähtialukseen!
+      🚀 Tähtialus & Rahti
     </button>
   </div>
 
@@ -75,25 +85,24 @@
   <div id="manageModal" class="modal-wrap hidden">
     <div class="modal">
       <h2>
-        <span>🏡 Kotilaakson Työnjako</span>
-        <span style="font-size:0.82rem;color:#86efac">Vapaita kantajia: <strong id="freeCarriersHdr">3</strong></span>
+        <span id="manageTitleHdr">🏡 Kotilaakson Työnjako</span>
+        <span style="font-size:0.82rem;color:#86efac">Vapaita kantajia: <strong id="freeCarriersHdr">2</strong></span>
       </h2>
       <p id="foodRateHdr" style="margin-bottom:8px;color:#fef08a;"></p>
-      <p>Uudet rakennukset ja pellot ilmestyvät kartalle <strong>punaisina ääriviivoina</strong> – napauta niitä suoraan maastossa aloittaaksesi (1 rakentaja / kohde)!</p>
 
       <div id="medbayBanner" class="build-card active-site hidden"></div>
 
-      <div class="sec-hdr">1. Kylän Tuotantotehtävät</div>
+      <div class="sec-hdr">1. Tuotantotehtävät tällä planeetalla</div>
       <div id="jobsContainer"></div>
 
       <div class="sec-hdr">2. Käynnissä olevat työmaat (Max 1 rakentaja / kohde)</div>
       <div id="activeSitesContainer"></div>
 
-      <button class="act-btn green" style="width:100%;margin-top:8px;justify-content:center;" id="closeManageBtn">Sulje & Palaa Laaksoon</button>
+      <button class="act-btn green" style="width:100%;margin-top:8px;justify-content:center;" id="closeManageBtn">Sulje</button>
     </div>
   </div>
 
-  <!-- KARTALTA NAPAUTETTAVAN RAKENNUKSEN PIKA-IKKUNA (ISO KYLÄTALO / VARUSKUNTA / TÄHTIALUS) -->
+  <!-- RAKENNUKSEN, RAHTIKONTIN JA TÄHTIALUKSEN PIKA-IKKUNA -->
   <div id="siteModal" class="modal-wrap hidden">
     <div class="modal">
       <h2 id="siteModalTitle">🏡 Iso Kylätalo</h2>
@@ -102,24 +111,24 @@
     </div>
   </div>
 
-  <!-- VARUSKUNNAN VALMISTUESSA AUKEAVA KOMENTAJAN VALINTAIKKUNA -->
+  <!-- KOMENTAJAN VALINTAIKKUNA -->
   <div id="commanderModal" class="modal-wrap hidden">
     <div class="modal">
       <h2><span>🎖️ Varuskunta Valmis – Valitse Komentaja!</span></h2>
-      <p>Itämetsässä liikehtii örkkipartioita! Valitse Varuskunnan komentaja ja Tähtialuksen lentäjä johtamaan laakson puolustusta ja uuden planeetan valloitusta:</p>
+      <p>Valitse Varuskunnan komentaja ja Tähtialuksen lentäjä johtamaan Kotilaakson puolustusta ja Punakiven linnakkeen valloitusta:</p>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:10px 0;">
         <div class="build-card" style="flex-direction:column;align-items:center;text-align:center;padding:12px;gap:8px;">
           <canvas id="cmdCanvasPippuri" width="96" height="96" style="background:rgba(15,35,20,0.65);border-radius:12px;border:2px solid #fb923c;"></canvas>
           <strong style="font-size:1.02rem;color:#fed7aa;">🔥 Kersantti Pippuri</strong>
-          <span style="font-size:0.8rem;line-height:1.35;color:#e2e8f0;">Punatukkainen etulinjan ryhmänjohtaja & tähtipilotti. Nopea sarjatuli-pulssikivääri ja +30 % vauhtikannustus lähellä oleville!</span>
+          <span style="font-size:0.8rem;line-height:1.35;color:#e2e8f0;">Punatukkainen etulinjan ryhmänjohtaja & tähtipilotti. Nopea sarjatuli ja +30 % vauhtikannustus lähellä oleville!</span>
           <button class="act-btn green" style="width:100%;justify-content:center;" id="pickPippuriBtn">Valitse Kersantti Pippuri</button>
         </div>
 
         <div class="build-card" style="flex-direction:column;align-items:center;text-align:center;padding:12px;gap:8px;">
           <canvas id="cmdCanvasTeras" width="96" height="96" style="background:rgba(15,35,20,0.65);border-radius:12px;border:2px solid #38bdf8;"></canvas>
           <strong style="font-size:1.02rem;color:#bae6fd;">🛡️ Kersantti Teräs</strong>
-          <span style="font-size:0.8rem;line-height:1.35;color:#e2e8f0;">Arpinen veteraanikersantti & raskaan aluksen lentäjä. Vahva panssari, järeä pulssikanuuna ja murtumaton puolustuslinja!</span>
+          <span style="font-size:0.8rem;line-height:1.35;color:#e2e8f0;">Arpinen veteraanikersantti & raskaan aluksen lentäjä. Vahva suojaus ja järeä pulssikanuuna linnakkeen murtamiseen!</span>
           <button class="act-btn blue" style="width:100%;justify-content:center;" id="pickTerasBtn">Valitse Kersantti Teräs</button>
         </div>
       </div>
@@ -129,20 +138,18 @@
   <!-- PELIN ALOITUS- JA OHJEIKKUNA -->
   <div id="introModal" class="modal-wrap">
     <div class="modal">
-      <h2><span>🌱 Vegan Space Rescue</span> <span class="pill" style="color:#86efac">v8.2 Kotilaakso</span></h2>
-
+      <h2><span>🌱 Vegan Space Rescue</span> <span class="pill" style="color:#86efac">v8.3 Kaksi Planeettaa</span></h2>
       <div class="avatar-info-box" style="margin-top:6px;">
-        <h3 style="color:#fef08a;">Uudisraivaajat saapuivat laaksoon!</h3>
+        <h3 style="color:#fef08a;">Kotilaakso & Punakiven Linnake</h3>
         <p style="margin-top:6px;line-height:1.45;">
-          Aloitat neljällä uudisraivaajalla ilman komentajaa. Ohjaa kyläläisiä <strong>suoraan kartalta</strong>, rakenna keskustaan <strong>Iso Kylätalo</strong> ja sahaa nopeasti laudat <strong>Kaurakaartin Varuskuntaan</strong>!
+          Rakenna Kotilaakso, valitse Varuskunnasta <strong>Kersantti Pippuri</strong> tai <strong>Kersantti Teräs</strong>, täytä laskeutumisalustan <strong>Rahtikontti</strong> puutavaralla ja lennä valloittamaan puuttoman <strong>Punakivi-planeetan</strong> örkkilinnake!
         </p>
         <div class="avatar-quote" style="margin-top:8px;">
-          🎯 Kun Varuskunta valmistuu, saat valita komentajaksesi <strong>Kersantti Pippurin</strong> tai <strong>Kersantti Teräksen</strong> ennen ensimmäistä örkkien hyökkäystä!
+          ⚠️ Pidä myös Kotilaakson puolustus vahvana: örkit tekevät voimistuvia iskuja kotirintamalle ja voivat sytyttää myllyn, leipomon tai sillan korjausta vaativiksi raunioiksi!
         </div>
       </div>
-
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="act-btn green" style="flex:1;justify-content:center;" id="startBtn">Aloita Laakson Raivaus!</button>
+        <button class="act-btn green" style="flex:1;justify-content:center;" id="startBtn">Jatka / Aloita Peli!</button>
         <button class="buy-btn" id="resetSaveBtn">Nollaa tallennus</button>
       </div>
     </div>
